@@ -174,7 +174,6 @@ class OptionValuesTest {
         assertTrue(logger.warnings.any { it.contains("removedInThisBundleVersion") })
     }
 
-
     @Test
     fun `an option without a value keeps the default of its patch`() {
         val patches = patchesByName(
