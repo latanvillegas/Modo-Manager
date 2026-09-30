@@ -197,7 +197,7 @@ class OptionValuesTest {
         )
 
         assertEquals("device", patches.getValue("Browser theme").options["browserTheme"].value)
-        assertTrue(logger.warnings.single().contains("stale value"))
+        assertTrue(logger.warnings.single().contains("stale or invalid value"))
     }
 
     @Test
