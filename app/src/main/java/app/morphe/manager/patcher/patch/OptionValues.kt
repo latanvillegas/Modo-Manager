@@ -73,6 +73,13 @@ fun Map<String, Patch<*>>.applyPatchOptions(
             "Option \"$key\" of the \"$patchName\" patch does not accept \"$value\" as ${option.type}"
         )
 
+        val allowedValues = option.values?.values
+        if (allowedValues != null && allowedValues.isNotEmpty() && coerced !in allowedValues) {
+            return@setOption logger.warn(
+                "Option \"$key\" of the \"$patchName\" patch does not accept stale value \"$coerced\""
+            )
+        }
+
         patch.options[key] = coerced
     }
 }
