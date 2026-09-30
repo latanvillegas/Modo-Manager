@@ -73,10 +73,11 @@ fun Map<String, Patch<*>>.applyPatchOptions(
             "Option \"$key\" of the \"$patchName\" patch does not accept \"$value\" as ${option.type}"
         )
 
-        val allowedValues = option.values?.values
-        if (allowedValues != null && allowedValues.isNotEmpty() && coerced !in allowedValues) {
+        @Suppress("UNCHECKED_CAST")
+        val acceptsValue = (option.validator as (app.morphe.patcher.patch.PatchOption<Any?>, Any?) -> Boolean)
+        if (!acceptsValue(option as app.morphe.patcher.patch.PatchOption<Any?>, coerced)) {
             return@setOption logger.warn(
-                "Option \"$key\" of the \"$patchName\" patch does not accept stale value \"$coerced\""
+                "Option \"$key\" of the \"$patchName\" patch rejected stale or invalid value \"$coerced\""
             )
         }
 
