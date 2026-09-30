@@ -175,6 +175,32 @@ class OptionValuesTest {
     }
 
     @Test
+    fun `stale dropdown value keeps the current patch default`() {
+        val patches = patchesByName(
+            bytecodePatch(name = "Browser theme") {
+                stringOption(
+                    key = "browserTheme",
+                    default = "device",
+                    values = mapOf(
+                        "Device default" to "device",
+                        "Pure Black" to "black",
+                        "Pure White" to "white"
+                    )
+                )
+            }
+        )
+        val logger = TestLogger()
+
+        patches.applyPatchOptions(
+            mapOf("Browser theme" to mapOf("browserTheme" to "removed-theme")),
+            logger
+        )
+
+        assertEquals("device", patches.getValue("Browser theme").options["browserTheme"].value)
+        assertTrue(logger.warnings.single().contains("stale value"))
+    }
+
+    @Test
     fun `an option without a value keeps the default of its patch`() {
         val patches = patchesByName(
             bytecodePatch(name = "Numbers") {
