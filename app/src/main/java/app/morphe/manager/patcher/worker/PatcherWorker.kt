@@ -37,6 +37,8 @@ import app.morphe.manager.domain.patchrun.CompatibilityResult
 import app.morphe.manager.domain.patchrun.IntegrityCheck
 import app.morphe.manager.domain.patchrun.PatchRef
 import app.morphe.manager.domain.patchrun.PatchRunReport
+import app.morphe.manager.domain.patchrun.PatchRunError
+import app.morphe.manager.domain.patchrun.PatchRunFailureClassifier
 import app.morphe.manager.domain.patchrun.ProvenanceRef
 import app.morphe.manager.domain.installer.RootInstaller
 import app.morphe.manager.domain.manager.KeystoreManager
@@ -248,6 +250,7 @@ class PatcherWorker(
             // This does not always show up for some reason
             setForeground(getForegroundInfo())
         } catch (e: Exception) {
+            deliverTerminalReport(success = false, error = e)
             // Foreground promotion can fail on some devices or when notification permission is
             // denied. Log it but continue - patching still works, just with less OS protection
             Log.w(tag, "Failed to promote worker to foreground service:".logFmt(), e)
@@ -353,6 +356,46 @@ class PatcherWorker(
         var reportInput: app.morphe.manager.domain.patchrun.ApkDescriptor? = null
         var reportIntegrity: IntegrityCheck? = null
         var reportOutput: ArtifactRef? = null
+        var reportDelivered = false
+
+        suspend fun deliverTerminalReport(success: Boolean, error: Throwable? = null) {
+            if (reportDelivered) return
+            val input = reportInput ?: return
+            val report = PatchRunReport(
+                runId = id.toString(),
+                startedAtEpochMs = startedAt,
+                finishedAtEpochMs = System.currentTimeMillis(),
+                stage = transaction.stage,
+                succeeded = success,
+                input = input,
+                integrity = reportIntegrity ?: IntegrityCheck(true, input.sha256),
+                compatibility = CompatibilityResult(
+                    compatible = success,
+                    code = if (success) CompatibilityCode.COMPATIBLE else CompatibilityCode.PROFILE_RESTRICTION,
+                    reason = if (success) "Patcher and final verification gates passed." else (error?.message ?: "Run failed."),
+                ),
+                patches = args.selectedPatches.entries.flatMap { (bundleUid, names) ->
+                    names.sorted().map { PatchRef(id = it, source = bundleUid.toString()) }
+                },
+                output = reportOutput,
+                errors = if (error == null) emptyList() else listOf(
+                    PatchRunError(
+                        code = PatchRunFailureClassifier.code(transaction.stage, isStopped),
+                        stage = transaction.stage,
+                        message = error.message ?: error.javaClass.simpleName,
+                        causeType = error.javaClass.name,
+                    )
+                ),
+                provenance = ProvenanceRef(
+                    managerVersion = BuildConfig.VERSION_NAME,
+                    patcherVersion = BuildConfig.PATCHER_VERSION,
+                ),
+            )
+            runCatching { args.onReportReady(report) }
+                .onSuccess { reportDelivered = true }
+                .onFailure { args.logger.warn("Patch report delivery failed: " + it.message) }
+        }
+
         val successSoundUri = prefs.patcherSuccessSoundUri.get()
         val errorSoundUri = prefs.patcherErrorSoundUri.get()
 
@@ -582,26 +625,7 @@ class PatcherWorker(
                 signingCertificateSha256 = signature.certificateSha256,
                 signatureVerified = signature.verified,
             )
-            val report = PatchRunReport(
-                runId = id.toString(),
-                startedAtEpochMs = startedAt,
-                finishedAtEpochMs = System.currentTimeMillis(),
-                stage = PatchRunStage.COMMIT,
-                succeeded = true,
-                input = inputDescriptor,
-                integrity = reportIntegrity ?: IntegrityCheck(true, inputDescriptor.sha256),
-                compatibility = CompatibilityResult(true, CompatibilityCode.COMPATIBLE, "Patcher and final verification gates passed."),
-                patches = args.selectedPatches.entries.flatMap { (bundleUid, names) ->
-                    names.sorted().map { PatchRef(id = it, source = bundleUid.toString()) }
-                },
-                output = reportOutput,
-                provenance = ProvenanceRef(
-                    managerVersion = BuildConfig.VERSION_NAME,
-                    patcherVersion = BuildConfig.PATCHER_VERSION,
-                ),
-            )
-            runCatching { args.onReportReady(report) }
-                .onFailure { args.logger.warn("Patch report delivery failed: " + it.message) }
+            deliverTerminalReport(success = true)
 
             val elapsed = System.currentTimeMillis() - startTime
 
@@ -617,6 +641,7 @@ class PatcherWorker(
             succeeded = true
             Result.success()
         } catch (e: ProcessRuntime.ProcessExitException) {
+            deliverTerminalReport(success = false, error = e)
             Log.e(
                 tag,
                 "Patcher process exited with code ${e.exitCode}".logFmt(),
@@ -635,6 +660,7 @@ class PatcherWorker(
                 )
             )
         } catch (e: ProcessRuntime.HeapExhaustedException) {
+            deliverTerminalReport(success = false, error = e)
             Log.e(
                 tag,
                 "Patcher exhausted its ${e.heapLimitMb}MB heap. ${e.originalStackTrace}".logFmt()
@@ -650,6 +676,7 @@ class PatcherWorker(
                 workDataOf(PROCESS_FAILURE_MESSAGE_KEY to message)
             )
         } catch (e: ProcessRuntime.RemoteFailureException) {
+            deliverTerminalReport(success = false, error = e)
             Log.e(
                 tag,
                 "An exception occurred in the remote process while patching. ${e.originalStackTrace}".logFmt()
