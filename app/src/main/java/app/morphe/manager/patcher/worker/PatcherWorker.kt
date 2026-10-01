@@ -40,6 +40,7 @@ import app.morphe.manager.domain.patchrun.PatchRunReport
 import app.morphe.manager.domain.patchrun.PatchRunError
 import app.morphe.manager.domain.patchrun.PatchRunFailureClassifier
 import app.morphe.manager.domain.patchrun.ApplicationProfile
+import app.morphe.manager.domain.patchrun.ApplicationProfileResolver
 import app.morphe.manager.domain.patchrun.PatchRunPreflight
 import app.morphe.manager.domain.patchrun.ProvenanceRef
 import app.morphe.manager.domain.installer.RootInstaller
@@ -106,8 +107,10 @@ class PatcherWorker(
         val queuePosition: Pair<Int, Int>? = null,
         /** Orchestration policy; default keeps the manager's existing verified user-key flow. */
         val signingPolicy: SigningPolicy = SigningPolicy(),
-        /** Optional declarative app profile. Null preserves generic patch-bundle behavior. */
+        /** Optional explicit profile override. Null lets bundle metadata resolve it generically. */
         val applicationProfile: ApplicationProfile? = null,
+        /** Declarative profiles supplied by the selected patch bundles. */
+        val applicationProfiles: List<ApplicationProfile> = emptyList(),
         /** Receives the terminal report; UI/storage decides where and how to persist/export it. */
         val onReportReady: suspend (PatchRunReport) -> Unit = {},
     ) {
@@ -433,7 +436,7 @@ class PatcherWorker(
 
             val inspectedInput = ApkInspector(pm).inspect(inputFile, fs.tempDir)
             reportInput = inspectedInput
-            resolvedProfile = args.applicationProfile
+            resolvedProfile = args.applicationProfile ?: ApplicationProfileResolver.resolve(args.applicationProfiles, inspectedInput)
             val verifiedIntegrity = ApkInspector(pm).integrity(inputFile)
             val preflight = PatchRunPreflight.evaluate(inspectedInput, resolvedProfile, verifiedIntegrity)
             reportIntegrity = preflight.integrity
