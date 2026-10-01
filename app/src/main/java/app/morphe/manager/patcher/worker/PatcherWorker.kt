@@ -435,8 +435,7 @@ class PatcherWorker(
             val inspectedInput = ApkInspector(pm).inspect(inputFile, fs.tempDir)
             reportInput = inspectedInput
             resolvedProfile = args.applicationProfile ?: BuiltInApplicationProfiles.resolveExact(inspectedInput)
-            val expectedHash = resolvedProfile?.expectedHashes?.singleOrNull()
-            val verifiedIntegrity = ApkInspector(pm).integrity(inputFile, expectedHash)
+            val verifiedIntegrity = ApkInspector(pm).integrity(inputFile)
             val preflight = PatchRunPreflight.evaluate(inspectedInput, resolvedProfile, verifiedIntegrity)
             reportIntegrity = preflight.integrity
             reportCompatibility = preflight.compatibility
