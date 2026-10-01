@@ -45,4 +45,32 @@ class ApplicationProfileResolverTest {
             ApplicationProfileResolver.resolve(listOf(a, b), apk)
         }
     }
+    @Test fun duplicateProfileIdsFailClosed() {
+        val a = ApplicationProfile("duplicate", "A", packageNames = setOf("example.app"))
+        val b = ApplicationProfile("duplicate", "B", packageNames = setOf("example.app"))
+        assertFailsWith<IllegalArgumentException> {
+            ApplicationProfileResolver.resolve(listOf(a, b), apk)
+        }
+    }
+
+    @Test fun blankProfileIdFailsClosed() {
+        val profile = ApplicationProfile("", "Invalid", packageNames = setOf("example.app"))
+        assertFailsWith<IllegalArgumentException> {
+            ApplicationProfileResolver.resolve(listOf(profile), apk)
+        }
+    }
+
+    @Test fun profileDocumentRejectsDuplicateIds() {
+        val a = ApplicationProfile("duplicate", "A")
+        val b = ApplicationProfile("duplicate", "B")
+        assertFailsWith<IllegalArgumentException> {
+            ApplicationProfilesDocument(1, listOf(a, b)).validatedProfiles()
+        }
+    }
+
+    @Test fun profileDocumentRejectsUnsupportedSchema() {
+        assertFailsWith<IllegalArgumentException> {
+            ApplicationProfilesDocument(2).validatedProfiles()
+        }
+    }
 }
