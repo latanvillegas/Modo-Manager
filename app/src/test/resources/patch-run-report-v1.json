@@ -15,7 +15,8 @@
     "targetSdk": 35,
     "containerType": "UNIVERSAL_APK",
     "sizeBytes": 100,
-    "sha256": "abc"
+    "sha256": "abc",
+    "signingCertificateSha256": []
   },
   "integrity": {
     "archiveReadable": true,
