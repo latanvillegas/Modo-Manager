@@ -600,7 +600,8 @@ class PatcherWorker(
                     patcherVersion = BuildConfig.PATCHER_VERSION,
                 ),
             )
-            args.onReportReady(report)
+            runCatching { args.onReportReady(report) }
+                .onFailure { args.logger.warn("Patch report delivery failed: " + it.message) }
 
             val elapsed = System.currentTimeMillis() - startTime
 
