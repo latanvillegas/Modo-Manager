@@ -32,4 +32,14 @@ object BuiltInApplicationProfiles {
 
     fun candidates(packageName: String): List<ApplicationProfile> =
         all.filter { it.packageNames.isEmpty() || packageName in it.packageNames }
+
+    /**
+     * Auto-select only an exact, unambiguous compatible profile. A mismatch never turns a
+     * generic run into a profile rejection; callers may explicitly select a profile to require it.
+     */
+    fun resolveExact(apk: app.morphe.manager.domain.patchrun.ApkDescriptor): ApplicationProfile? {
+        val matches = candidates(apk.packageName)
+            .filter { app.morphe.manager.domain.patchrun.ProfileCompatibility.evaluate(it, apk).compatible }
+        return matches.singleOrNull()
+    }
 }
