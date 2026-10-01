@@ -96,7 +96,7 @@ data class PatchRunReport(
         output?.let {
             appendLine("output.file: ${it.fileName}"); appendLine("output.sha256: ${it.sha256}")
             appendLine("output.signatureVerified: ${it.signatureVerified}")
-            appendLine("output.certificateSha256: ${it.signingCertificateSha256 ?: "unknown"}")
+            appendLine("output.certificateSha256: ${it.signingCertificateSha256.sorted().joinToString(",").ifBlank { "unknown" }}")
         }
         provenance?.let {
             appendLine("provenance.commit: ${it.commit ?: "unknown"}"); appendLine("provenance.workflow: ${it.workflow ?: "unknown"}")
