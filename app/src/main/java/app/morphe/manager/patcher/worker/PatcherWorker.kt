@@ -31,6 +31,13 @@ import app.morphe.manager.domain.patchrun.PatchRunStage
 import app.morphe.manager.domain.patchrun.PatchRunTransaction
 import app.morphe.manager.domain.patchrun.SigningPolicy
 import app.morphe.manager.domain.patchrun.SigningPolicyValidator
+import app.morphe.manager.domain.patchrun.ArtifactRef
+import app.morphe.manager.domain.patchrun.CompatibilityCode
+import app.morphe.manager.domain.patchrun.CompatibilityResult
+import app.morphe.manager.domain.patchrun.IntegrityCheck
+import app.morphe.manager.domain.patchrun.PatchRef
+import app.morphe.manager.domain.patchrun.PatchRunReport
+import app.morphe.manager.domain.patchrun.ProvenanceRef
 import app.morphe.manager.domain.installer.RootInstaller
 import app.morphe.manager.domain.manager.KeystoreManager
 import app.morphe.manager.domain.manager.PreferencesManager
@@ -95,6 +102,8 @@ class PatcherWorker(
         val queuePosition: Pair<Int, Int>? = null,
         /** Optional orchestration policy. Null keeps the manager's existing verified user-key flow. */
         val signingPolicy: SigningPolicy = SigningPolicy(),
+        /** Receives the terminal report; UI/storage decides where and how to persist/export it. */
+        val onReportReady: suspend (PatchRunReport) -> Unit = {},
     ) {
         val packageName get() = input.packageName
     }
@@ -340,6 +349,10 @@ class PatcherWorker(
         var succeeded = false
         var autoInstallPending = false
         val completionSoundEnabled = prefs.patcherCompletionSound.get()
+        val startedAt = System.currentTimeMillis()
+        var reportInput: app.morphe.manager.domain.patchrun.ApkDescriptor? = null
+        var reportIntegrity: IntegrityCheck? = null
+        var reportOutput: ArtifactRef? = null
         val successSoundUri = prefs.patcherSuccessSoundUri.get()
         val errorSoundUri = prefs.patcherErrorSoundUri.get()
 
@@ -521,6 +534,8 @@ class PatcherWorker(
                 throw IllegalStateException("Signed APK verification failed: " + signature.errors.joinToString())
             }
             val inputDescriptor = ApkInspector(pm).inspect(inputFile, fs.tempDir)
+            reportInput = inputDescriptor
+            reportIntegrity = IntegrityCheck(true, inputDescriptor.sha256)
             val postValidation = FinalApkPostValidator(pm).validate(signedCandidate, inputDescriptor)
             if (!postValidation.validFor(args.signingPolicy)) {
                 throw IllegalStateException("Signed APK post-validation failed: " + postValidation)
@@ -560,6 +575,32 @@ class PatcherWorker(
                 outputFile.delete()
                 throw IllegalStateException("Committed APK SHA-256 differs from verified candidate")
             }
+            reportOutput = ArtifactRef(
+                fileName = outputFile.name,
+                sizeBytes = outputFile.length(),
+                sha256 = committedHash,
+                signingCertificateSha256 = signature.certificateSha256,
+                signatureVerified = signature.verified,
+            )
+            val report = PatchRunReport(
+                runId = id.toString(),
+                startedAtEpochMs = startedAt,
+                finishedAtEpochMs = System.currentTimeMillis(),
+                stage = PatchRunStage.COMMIT,
+                succeeded = true,
+                input = inputDescriptor,
+                integrity = reportIntegrity ?: IntegrityCheck(true, inputDescriptor.sha256),
+                compatibility = CompatibilityResult(true, CompatibilityCode.COMPATIBLE, "Patcher and final verification gates passed."),
+                patches = args.selectedPatches.entries.flatMap { (bundleUid, names) ->
+                    names.sorted().map { PatchRef(id = it, source = bundleUid.toString()) }
+                },
+                output = reportOutput,
+                provenance = ProvenanceRef(
+                    managerVersion = BuildConfig.VERSION_NAME,
+                    patcherVersion = BuildConfig.PATCHER_VERSION,
+                ),
+            )
+            args.onReportReady(report)
 
             val elapsed = System.currentTimeMillis() - startTime
 
