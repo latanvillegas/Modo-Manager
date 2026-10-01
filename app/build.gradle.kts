@@ -53,6 +53,7 @@ dependencies {
     implementation(libs.arsclib)
     implementation(libs.morphe.patcher)
     implementation(libs.morphe.library)
+    implementation(libs.apksig)
 
     implementation(libs.androidx.documentfile)
 
