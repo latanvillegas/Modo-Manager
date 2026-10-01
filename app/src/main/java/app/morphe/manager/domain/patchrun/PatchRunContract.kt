@@ -72,7 +72,14 @@ object ProfileCompatibility {
     val signingCertificateSha256: Set<String> = emptySet(),
     val signatureVerified: Boolean? = null,
 )
-@Serializable data class ProvenanceRef(val commit: String? = null, val workflow: String? = null, val workflowRunId: String? = null, val attestation: String? = null)
+@Serializable data class ProvenanceRef(
+    val managerVersion: String? = null,
+    val patcherVersion: String? = null,
+    val commit: String? = null,
+    val workflow: String? = null,
+    val workflowRunId: String? = null,
+    val attestation: String? = null,
+)
 
 @Serializable
 data class PatchRunReport(
@@ -99,6 +106,7 @@ data class PatchRunReport(
             appendLine("output.certificateSha256: ${it.signingCertificateSha256.sorted().joinToString(",").ifBlank { "unknown" }}")
         }
         provenance?.let {
+            appendLine("provenance.managerVersion: ${it.managerVersion ?: "unknown"}"); appendLine("provenance.patcherVersion: ${it.patcherVersion ?: "unknown"}")
             appendLine("provenance.commit: ${it.commit ?: "unknown"}"); appendLine("provenance.workflow: ${it.workflow ?: "unknown"}")
             appendLine("provenance.runId: ${it.workflowRunId ?: "unknown"}")
         }
