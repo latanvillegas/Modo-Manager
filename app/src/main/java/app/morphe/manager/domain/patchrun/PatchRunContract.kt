@@ -9,6 +9,7 @@ data class ApkDescriptor(
     val packageName: String, val versionName: String?, val versionCode: Long,
     val abis: Set<String> = emptySet(), val minSdk: Int?, val targetSdk: Int?,
     val containerType: ApkContainerType, val sizeBytes: Long, val sha256: String,
+    val signingCertificateSha256: Set<String> = emptySet(),
 )
 
 @Serializable
