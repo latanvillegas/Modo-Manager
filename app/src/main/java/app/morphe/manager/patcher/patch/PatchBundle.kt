@@ -2,7 +2,9 @@ package app.morphe.manager.patcher.patch
 
 import android.os.Build
 import android.os.Parcelable
+import app.morphe.manager.domain.patchrun.ApplicationProfilesDocument
 import app.morphe.patcher.patch.Patch
+import kotlinx.serialization.json.Json
 import app.morphe.patcher.patch.loadPatchesFromDex
 import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
@@ -21,6 +23,21 @@ data class PatchBundle(val patchesJar: String) : Parcelable {
             JarFile(patchesJar).use { it.manifest }
         } catch (_: IOException) {
             null
+        }
+    }
+
+    @IgnoredOnParcel
+    val applicationProfiles by lazy {
+        try {
+            JarFile(patchesJar).use { jar ->
+                val entry = jar.getJarEntry(APPLICATION_PROFILES_ENTRY) ?: return@lazy emptyList()
+                val json = jar.getInputStream(entry).bufferedReader().use { it.readText() }
+                val document = Json { ignoreUnknownKeys = true }.decodeFromString<ApplicationProfilesDocument>(json)
+                require(document.schemaVersion == 1) { "Unsupported application profile schema: ${document.schemaVersion}" }
+                document.profiles
+            }
+        } catch (error: Exception) {
+            throw IllegalStateException("Invalid declarative application profiles in patch bundle", error)
         }
     }
 
@@ -55,6 +72,10 @@ data class PatchBundle(val patchesJar: String) : Parcelable {
         val license: String?,
         val patcherVersion: String?
     )
+
+    companion object {
+        private const val APPLICATION_PROFILES_ENTRY = "application-profiles-v1.json"
+    }
 
     object Loader {
         private fun loadBundle(bundle: PatchBundle): Collection<Patch<*>> {
