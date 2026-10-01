@@ -605,7 +605,6 @@ class PatcherViewModel(
             .asSequence()
             .filter { it.uid in appliedSelection.keys }
             .flatMap { it.patchBundle?.applicationProfiles.orEmpty().asSequence() }
-            .distinctBy { it.id }
             .toList()
 
         // Check that all selected bundles are compatible with the patcher bundled in this
