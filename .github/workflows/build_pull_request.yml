@@ -114,10 +114,12 @@ jobs:
         run: |
           sha256sum ${{ steps.fork_check.outputs.apk_dir }}/*.apk | tee artifact-sha256.txt
 
-      - name: Upload APK
+      - name: Upload reproducible build artifacts
         uses: actions/upload-artifact@v7
         with:
-          archive: false
+          name: manager-build-${{ github.sha }}
           path: |
             ${{ steps.fork_check.outputs.apk_dir }}/*.apk
             artifact-sha256.txt
+          if-no-files-found: error
+          retention-days: 14
