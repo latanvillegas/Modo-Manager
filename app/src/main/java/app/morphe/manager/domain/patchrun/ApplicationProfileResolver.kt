@@ -6,7 +6,17 @@ import kotlinx.serialization.Serializable
 data class ApplicationProfilesDocument(
     val schemaVersion: Int,
     val profiles: List<ApplicationProfile> = emptyList(),
-)
+) {
+    fun validatedProfiles(): List<ApplicationProfile> {
+        require(schemaVersion == 1) { "Unsupported application profile schema: $schemaVersion" }
+        require(profiles.none { it.id.isBlank() }) { "Application profile id must not be blank." }
+        val duplicateIds = profiles.groupingBy { it.id }.eachCount().filterValues { it > 1 }.keys.sorted()
+        require(duplicateIds.isEmpty()) {
+            "Duplicate application profile ids: " + duplicateIds.joinToString()
+        }
+        return profiles
+    }
+}
 
 /**
  * Selects a declarative profile without knowing any application names.
@@ -17,9 +27,15 @@ data class ApplicationProfilesDocument(
  */
 object ApplicationProfileResolver {
     fun resolve(profiles: Iterable<ApplicationProfile>, apk: ApkDescriptor): ApplicationProfile? {
-        val packageCandidates = profiles
+        val allProfiles = profiles.toList()
+        require(allProfiles.none { it.id.isBlank() }) { "Application profile id must not be blank." }
+        val duplicateIds = allProfiles.groupingBy { it.id }.eachCount().filterValues { it > 1 }.keys.sorted()
+        require(duplicateIds.isEmpty()) {
+            "Duplicate application profile ids: " + duplicateIds.joinToString()
+        }
+
+        val packageCandidates = allProfiles
             .filter { it.packageNames.isEmpty() || apk.packageName in it.packageNames }
-            .distinctBy { it.id }
 
         if (packageCandidates.isEmpty()) return null
         if (packageCandidates.size == 1) return packageCandidates.single()
