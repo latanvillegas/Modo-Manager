@@ -255,7 +255,7 @@ class PatcherWorker(
             // This does not always show up for some reason
             setForeground(getForegroundInfo())
         } catch (e: Exception) {
-            deliverTerminalReport(success = false, error = e)
+            // Foreground promotion happens before runPatcher/report context exists and is non-fatal.
             // Foreground promotion can fail on some devices or when notification permission is
             // denied. Log it but continue - patching still works, just with less OS protection
             Log.w(tag, "Failed to promote worker to foreground service:".logFmt(), e)
