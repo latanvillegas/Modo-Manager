@@ -33,8 +33,7 @@ data class PatchBundle(val patchesJar: String) : Parcelable {
                 val entry = jar.getJarEntry(APPLICATION_PROFILES_ENTRY) ?: return@lazy emptyList()
                 val json = jar.getInputStream(entry).bufferedReader().use { it.readText() }
                 val document = Json { ignoreUnknownKeys = true }.decodeFromString<ApplicationProfilesDocument>(json)
-                require(document.schemaVersion == 1) { "Unsupported application profile schema: ${document.schemaVersion}" }
-                document.profiles
+                document.validatedProfiles()
             }
         } catch (error: Exception) {
             throw IllegalStateException("Invalid declarative application profiles in patch bundle", error)
