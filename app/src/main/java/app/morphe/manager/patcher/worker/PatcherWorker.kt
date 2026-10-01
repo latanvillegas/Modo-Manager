@@ -41,6 +41,7 @@ import app.morphe.manager.domain.patchrun.PatchRunError
 import app.morphe.manager.domain.patchrun.PatchRunFailureClassifier
 import app.morphe.manager.domain.patchrun.ApplicationProfile
 import app.morphe.manager.domain.patchrun.PatchRunPreflight
+import app.morphe.manager.domain.patchrun.profiles.BuiltInApplicationProfiles
 import app.morphe.manager.domain.patchrun.ProvenanceRef
 import app.morphe.manager.domain.installer.RootInstaller
 import app.morphe.manager.domain.manager.KeystoreManager
@@ -360,6 +361,8 @@ class PatcherWorker(
         var reportInput: app.morphe.manager.domain.patchrun.ApkDescriptor? = null
         var reportIntegrity: IntegrityCheck? = null
         var reportOutput: ArtifactRef? = null
+        var reportCompatibility: CompatibilityResult? = null
+        var resolvedProfile: ApplicationProfile? = null
         var reportDelivered = false
 
         suspend fun deliverTerminalReport(success: Boolean, error: Throwable? = null) {
@@ -373,11 +376,8 @@ class PatcherWorker(
                 succeeded = success,
                 input = input,
                 integrity = reportIntegrity ?: IntegrityCheck(true, input.sha256),
-                compatibility = CompatibilityResult(
-                    compatible = success,
-                    code = if (success) CompatibilityCode.COMPATIBLE else CompatibilityCode.PROFILE_RESTRICTION,
-                    reason = if (success) "Patcher and final verification gates passed." else (error?.message ?: "Run failed."),
-                ),
+                compatibility = reportCompatibility
+                    ?: CompatibilityResult(true, CompatibilityCode.COMPATIBLE, "No application profile selected; bundle compatibility is authoritative."),
                 patches = args.selectedPatches.entries.flatMap { (bundleUid, names) ->
                     names.sorted().map { PatchRef(id = it, source = bundleUid.toString()) }
                 },
@@ -390,6 +390,7 @@ class PatcherWorker(
                         causeType = error.javaClass.name,
                     )
                 ),
+                profileId = resolvedProfile?.id,
                 provenance = ProvenanceRef(
                     managerVersion = BuildConfig.VERSION_NAME,
                     patcherVersion = BuildConfig.PATCHER_VERSION,
@@ -430,8 +431,10 @@ class PatcherWorker(
 
             val inspectedInput = ApkInspector(pm).inspect(inputFile, fs.tempDir)
             reportInput = inspectedInput
-            val preflight = PatchRunPreflight.evaluate(inspectedInput, args.applicationProfile)
+            resolvedProfile = args.applicationProfile ?: BuiltInApplicationProfiles.resolveExact(inspectedInput)
+            val preflight = PatchRunPreflight.evaluate(inspectedInput, resolvedProfile)
             reportIntegrity = preflight.integrity
+            reportCompatibility = preflight.compatibility
             if (!preflight.allowed) {
                 throw IllegalArgumentException("APK preflight rejected input: " + preflight.compatibility.reason)
             }
