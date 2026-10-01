@@ -39,6 +39,8 @@ import app.morphe.manager.domain.patchrun.PatchRef
 import app.morphe.manager.domain.patchrun.PatchRunReport
 import app.morphe.manager.domain.patchrun.PatchRunError
 import app.morphe.manager.domain.patchrun.PatchRunFailureClassifier
+import app.morphe.manager.domain.patchrun.ApplicationProfile
+import app.morphe.manager.domain.patchrun.PatchRunPreflight
 import app.morphe.manager.domain.patchrun.ProvenanceRef
 import app.morphe.manager.domain.installer.RootInstaller
 import app.morphe.manager.domain.manager.KeystoreManager
@@ -104,6 +106,8 @@ class PatcherWorker(
         val queuePosition: Pair<Int, Int>? = null,
         /** Optional orchestration policy. Null keeps the manager's existing verified user-key flow. */
         val signingPolicy: SigningPolicy = SigningPolicy(),
+        /** Optional declarative app profile. Null preserves generic patch-bundle behavior. */
+        val applicationProfile: ApplicationProfile? = null,
         /** Receives the terminal report; UI/storage decides where and how to persist/export it. */
         val onReportReady: suspend (PatchRunReport) -> Unit = {},
     ) {
@@ -401,7 +405,6 @@ class PatcherWorker(
 
         return try {
             val startTime = System.currentTimeMillis()
-            transaction.advance(PatchRunStage.PATCH)
 
             if (args.input is SelectedApp.Installed) {
                 installedAppRepository.get(args.packageName)?.let {
@@ -424,6 +427,15 @@ class PatcherWorker(
                     source
                 }
             }
+
+            val inspectedInput = ApkInspector(pm).inspect(inputFile, fs.tempDir)
+            reportInput = inspectedInput
+            val preflight = PatchRunPreflight.evaluate(inspectedInput, args.applicationProfile)
+            reportIntegrity = preflight.integrity
+            if (!preflight.allowed) {
+                throw IllegalArgumentException("APK preflight rejected input: " + preflight.compatibility.reason)
+            }
+            transaction.advance(PatchRunStage.PATCH)
 
             val useProcessRuntime = prefs.useProcessRuntime.get()
             val stripNativeLibs = prefs.stripUnusedNativeLibs.get()
@@ -576,9 +588,7 @@ class PatcherWorker(
             if (!signature.verified) {
                 throw IllegalStateException("Signed APK verification failed: " + signature.errors.joinToString())
             }
-            val inputDescriptor = ApkInspector(pm).inspect(inputFile, fs.tempDir)
-            reportInput = inputDescriptor
-            reportIntegrity = IntegrityCheck(true, inputDescriptor.sha256)
+            val inputDescriptor = inspectedInput
             val postValidation = FinalApkPostValidator(pm).validate(signedCandidate, inputDescriptor)
             if (!postValidation.validFor(args.signingPolicy)) {
                 throw IllegalStateException("Signed APK post-validation failed: " + postValidation)
