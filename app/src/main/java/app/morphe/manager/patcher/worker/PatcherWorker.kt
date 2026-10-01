@@ -29,6 +29,8 @@ import app.morphe.manager.domain.patchrun.FinalApkPostValidator
 import app.morphe.manager.domain.patchrun.FinalApkVerifier
 import app.morphe.manager.domain.patchrun.PatchRunStage
 import app.morphe.manager.domain.patchrun.PatchRunTransaction
+import app.morphe.manager.domain.patchrun.SigningPolicy
+import app.morphe.manager.domain.patchrun.SigningPolicyValidator
 import app.morphe.manager.domain.installer.RootInstaller
 import app.morphe.manager.domain.manager.KeystoreManager
 import app.morphe.manager.domain.manager.PreferencesManager
@@ -90,7 +92,9 @@ class PatcherWorker(
          */
         val announceCompletion: Boolean = true,
         /** Apps already done and the queue total, null for a single run. */
-        val queuePosition: Pair<Int, Int>? = null
+        val queuePosition: Pair<Int, Int>? = null,
+        /** Optional orchestration policy. Null keeps the manager's existing verified user-key flow. */
+        val signingPolicy: SigningPolicy = SigningPolicy(),
     ) {
         val packageName get() = input.packageName
     }
@@ -518,8 +522,20 @@ class PatcherWorker(
             }
             val inputDescriptor = ApkInspector(pm).inspect(inputFile, fs.tempDir)
             val postValidation = FinalApkPostValidator(pm).validate(signedCandidate, inputDescriptor)
-            if (!postValidation.valid) {
+            if (!postValidation.validFor(args.signingPolicy)) {
                 throw IllegalStateException("Signed APK post-validation failed: " + postValidation)
+            }
+            val policyValidation = SigningPolicyValidator.evaluate(
+                policy = args.signingPolicy,
+                inputPackage = inputDescriptor.packageName,
+                outputPackage = postValidation.outputPackageName
+                    ?: throw IllegalStateException("Final APK package could not be read"),
+                inputCertificates = inputDescriptor.signingCertificateSha256,
+                outputCertificates = signature.certificateSha256,
+                signatureVerified = signature.verified,
+            )
+            if (!policyValidation.valid) {
+                throw IllegalStateException("Signing policy rejected final APK: " + policyValidation.reason)
             }
 
             transaction.advance(PatchRunStage.COMMIT)
