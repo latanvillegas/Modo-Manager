@@ -105,7 +105,7 @@ class PatcherWorker(
         val announceCompletion: Boolean = true,
         /** Apps already done and the queue total, null for a single run. */
         val queuePosition: Pair<Int, Int>? = null,
-        /** Optional orchestration policy. Null keeps the manager's existing verified user-key flow. */
+        /** Orchestration policy; default keeps the manager's existing verified user-key flow. */
         val signingPolicy: SigningPolicy = SigningPolicy(),
         /** Optional declarative app profile. Null preserves generic patch-bundle behavior. */
         val applicationProfile: ApplicationProfile? = null,
