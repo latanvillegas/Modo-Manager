@@ -37,6 +37,8 @@ import app.morphe.manager.domain.patchrun.CompatibilityResult
 import app.morphe.manager.domain.patchrun.IntegrityCheck
 import app.morphe.manager.domain.patchrun.PatchRef
 import app.morphe.manager.domain.patchrun.PatchRunReport
+import app.morphe.manager.domain.patchrun.PatchRunError
+import app.morphe.manager.domain.patchrun.PatchRunErrorCode
 import app.morphe.manager.domain.patchrun.ProvenanceRef
 import app.morphe.manager.domain.installer.RootInstaller
 import app.morphe.manager.domain.manager.KeystoreManager
@@ -248,6 +250,7 @@ class PatcherWorker(
             // This does not always show up for some reason
             setForeground(getForegroundInfo())
         } catch (e: Exception) {
+            deliverReport(succeeded = false, error = e)
             // Foreground promotion can fail on some devices or when notification permission is
             // denied. Log it but continue - patching still works, just with less OS protection
             Log.w(tag, "Failed to promote worker to foreground service:".logFmt(), e)
@@ -353,255 +356,21 @@ class PatcherWorker(
         var reportInput: app.morphe.manager.domain.patchrun.ApkDescriptor? = null
         var reportIntegrity: IntegrityCheck? = null
         var reportOutput: ArtifactRef? = null
-        val successSoundUri = prefs.patcherSuccessSoundUri.get()
-        val errorSoundUri = prefs.patcherErrorSoundUri.get()
+        var reportDelivered = false
 
-        return try {
-            val startTime = System.currentTimeMillis()
-            transaction.advance(PatchRunStage.PATCH)
-
-            if (args.input is SelectedApp.Installed) {
-                installedAppRepository.get(args.packageName)?.let {
-                    if (it.installType == InstallType.MOUNT) {
-                        rootInstaller.unmount(args.packageName)
-                    }
-                }
+        suspend fun deliverReport(succeeded: Boolean, error: Throwable? = null) {
+            if (reportDelivered) return
+            val input = reportInput ?: return
+            val code = when {
+                error == null -> null
+                isStopped -> PatchRunErrorCode.CANCELLED
+                transaction.stage == PatchRunStage.PATCH -> PatchRunErrorCode.PATCH_FAILED
+                transaction.stage == PatchRunStage.SIGN -> PatchRunErrorCode.SIGN_FAILED
+                transaction.stage == PatchRunStage.VERIFY -> PatchRunErrorCode.SIGNATURE_INVALID
+                transaction.stage == PatchRunStage.COMMIT -> PatchRunErrorCode.OUTPUT_HASH_FAILED
+                else -> PatchRunErrorCode.INTERNAL_ERROR
             }
-
-            val inputFile = when (val selectedApp = args.input) {
-                is SelectedApp.Local -> {
-                    val needsSplit = SplitApkPreparer.isSplitArchive(selectedApp.file)
-                    args.setInputFile(selectedApp.file, needsSplit, false)
-                    selectedApp.file
-                }
-
-                is SelectedApp.Installed -> {
-                    val source = File(pm.getPackageInfo(selectedApp.packageName)!!.applicationInfo!!.sourceDir)
-                    args.setInputFile(source, false, false)
-                    source
-                }
-            }
-
-            val useProcessRuntime = prefs.useProcessRuntime.get()
-            val stripNativeLibs = prefs.stripUnusedNativeLibs.get()
-            val inputIsSplitArchive = SplitApkPreparer.isSplitArchive(inputFile)
-            // The architecture the patches were selected against, worth a line of its own now
-            // that a patch can declare itself unavailable for the one the input carries. Read
-            // from the app rather than from [inputFile], which for an installed one is the base
-            // APK alone and says nothing about the split its native libraries live in
-            val apkArchitecture = ApkArchitectureResolver.resolve(args.input, pm)
-            val selectedCount = args.selectedPatches.values.sumOf { it.size }
-
-            // Log device environment for diagnostics
-            val deviceStats = applicationContext.deviceStats()
-
-            // What this build of Morphe brings to the run. Every bug report needs the versions,
-            // and native lib stripping silently changes what ends up in the output APK
-            args.logger.info(
-                "$LOG_WORKER_PREFIX_BUILD " +
-                        "$LOG_WORKER_FIELD_MANAGER=${BuildConfig.VERSION_NAME} " +
-                        "$LOG_WORKER_FIELD_PATCHER=${BuildConfig.PATCHER_VERSION} " +
-                        "$LOG_WORKER_FIELD_NATIVE_LIBS=$stripNativeLibs"
-            )
-
-            args.logger.info(
-                "$LOG_WORKER_PREFIX_DEVICE " +
-                        "$LOG_WORKER_FIELD_ANDROID=${Build.VERSION.RELEASE} " +
-                        "$LOG_WORKER_FIELD_API=${Build.VERSION.SDK_INT} " +
-                        "$LOG_WORKER_FIELD_RAM_AVAIL=\"${formatBytesForReport(deviceStats?.ramAvailable ?: 0L)}\" " +
-                        "$LOG_WORKER_FIELD_RAM_TOTAL=\"${formatBytesForReport(deviceStats?.ramTotal ?: 0L)}\" " +
-                        "$LOG_WORKER_FIELD_STORAGE_AVAIL=\"${formatBytesForReport(deviceStats?.storageAvailable ?: 0L)}\" " +
-                        "$LOG_WORKER_FIELD_STORAGE_TOTAL=\"${formatBytesForReport(deviceStats?.storageTotal ?: 0L)}\""
-            )
-
-            args.logger.info(
-                "$LOG_WORKER_PREFIX_STARTED ${System.currentTimeMillis()} " +
-                        "$LOG_WORKER_FIELD_PACKAGE=${args.packageName} " +
-                        "$LOG_WORKER_FIELD_VERSION=${args.input.version} " +
-                        "$LOG_WORKER_FIELD_INPUT=${inputFile.absolutePath} " +
-                        "$LOG_WORKER_FIELD_SIZE=${inputFile.length()} " +
-                        "$LOG_WORKER_FIELD_SPLIT=$inputIsSplitArchive " +
-                        "$LOG_WORKER_FIELD_ARCH=$apkArchitecture " +
-                        "$LOG_WORKER_FIELD_PATCHES=$selectedCount " +
-                        "$LOG_WORKER_FIELD_DEVICE=${Build.MANUFACTURER} " +
-                        "$LOG_WORKER_FIELD_MODEL=${Build.MODEL}"
-            )
-
-            // One line per source rather than a joined list, so a name and its version stay
-            // together no matter how many sources contributed to this run
-            args.patchSources.forEach { source ->
-                args.logger.info(
-                    "$LOG_WORKER_PREFIX_SOURCE $LOG_WORKER_FIELD_NAME=\"${source.name}\" " +
-                            "$LOG_WORKER_FIELD_VERSION=\"${source.version ?: "?"}\""
-                )
-            }
-
-            // Log runtime mode info
-            if (useProcessRuntime) {
-                // The limit the runtime will actually start with, not the raw setting
-                val memLimit = coerceMemoryLimit(applicationContext, prefs.patcherProcessMemoryLimit.get())
-                args.logger.info("$LOG_WORKER_PREFIX_RUNTIME process $LOG_WORKER_FIELD_MEMORY_LIMIT=$memLimit")
-            } else {
-                // CoroutineRuntime starts memory polling internally; only log the heap size here
-                args.logger.logCoroutineHeap()
-                args.logger.info("$LOG_WORKER_PREFIX_RUNTIME coroutine")
-            }
-
-            // Execute patching. ProcessRuntime has its own retry loop that reduces memory on OOM
-            // If it still fails on Android <= Q, fall back to CoroutineRuntime
-            val runtime = if (useProcessRuntime) {
-                ProcessRuntime(applicationContext)
-            } else {
-                CoroutineRuntime(applicationContext)
-            }
-
-            val options = args.options.restrictTo(args.selectedPatches)
-
-            // After merging a split archive (in either runtime), save the resulting mono-APK
-            // directly to originalApksDir so it is used for repatching instead of the archive.
-            // The runtime is done with the file by then, so it is moved rather than copied
-            val onMergedApkReady: suspend (File) -> Unit = { mergedFile ->
-                val version = pm.getPackageInfo(mergedFile)?.versionName
-                    ?.takeUnless { it.isBlank() }
-                    ?: args.input.version
-                    ?: "unknown"
-                val savedFile = originalApkRepository.saveOriginalApk(
-                    packageName = args.packageName,
-                    version = version,
-                    sourceFile = mergedFile,
-                    moveSource = true
-                )
-                args.setInputFile(savedFile ?: mergedFile, true, true)
-            }
-
-            try {
-                runtime.execute(
-                    inputFile.absolutePath,
-                    patchedApk.absolutePath,
-                    args.packageName,
-                    args.selectedPatches,
-                    options,
-                    args.logger,
-                    onPatchCompleted,
-                    ::updateProgress,
-                    stripNativeLibs,
-                    onMergedApkReady,
-                    onRestart
-                )
-            } catch (e: Exception) {
-                val fallbackReason = when {
-                    !useProcessRuntime -> null
-                    isBlockedSyscall(e) -> "Patcher process was killed for a system call the device forbids"
-                    e is ProcessRuntime.ProcessConnectTimeoutException -> e.message
-                    e is ProcessRuntime.HeapLimitIgnoredException -> e.message
-                    isOomRelated(e) && Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q ->
-                        "Process runtime OOM on Android ${Build.VERSION.RELEASE}"
-                    else -> null
-                } ?: throw e
-
-                args.logger.warn("$fallbackReason, falling back to coroutine runtime")
-
-                // The fallback is a fresh run of the whole pipeline, same as a memory retry
-                onRestart()
-                args.logger.logCoroutineHeap()
-
-                CoroutineRuntime(applicationContext).execute(
-                    inputFile.absolutePath,
-                    patchedApk.absolutePath,
-                    args.packageName,
-                    args.selectedPatches,
-                    options,
-                    args.logger,
-                    onPatchCompleted,
-                    ::updateProgress,
-                    stripNativeLibs,
-                    onMergedApkReady,
-                    onRestart
-                )
-            }
-
-            transaction.advance(PatchRunStage.SIGN)
-            updatePatcherNotification(stepName = signingApkLabel, patchProgress = null)
-            if (signedCandidate.exists() && !signedCandidate.delete()) {
-                throw IllegalStateException("Unable to clear previous signed candidate")
-            }
-            keystoreManager.sign(patchedApk, signedCandidate)
-            updateProgress(state = State.COMPLETED) // Signing
-
-            transaction.advance(PatchRunStage.VERIFY)
-            val signature = FinalApkVerifier().verify(signedCandidate)
-            if (!signature.verified) {
-                throw IllegalStateException("Signed APK verification failed: " + signature.errors.joinToString())
-            }
-            val inputDescriptor = ApkInspector(pm).inspect(inputFile, fs.tempDir)
-            reportInput = inputDescriptor
-            reportIntegrity = IntegrityCheck(true, inputDescriptor.sha256)
-            val postValidation = FinalApkPostValidator(pm).validate(signedCandidate, inputDescriptor)
-            if (!postValidation.validFor(args.signingPolicy)) {
-                throw IllegalStateException("Signed APK post-validation failed: " + postValidation)
-            }
-            val policyValidation = SigningPolicyValidator.evaluate(
-                policy = args.signingPolicy,
-                inputPackage = inputDescriptor.packageName,
-                outputPackage = postValidation.outputPackageName
-                    ?: throw IllegalStateException("Final APK package could not be read"),
-                inputCertificates = inputDescriptor.signingCertificateSha256,
-                outputCertificates = signature.certificateSha256,
-                signatureVerified = signature.verified,
-            )
-            if (!policyValidation.valid) {
-                throw IllegalStateException("Signing policy rejected final APK: " + policyValidation.reason)
-            }
-
-            transaction.advance(PatchRunStage.COMMIT)
-            val outputFile = File(args.output)
-            outputFile.parentFile?.mkdirs()
-            val commitCandidate = File(outputFile.parentFile ?: fs.tempDir, outputFile.name + ".commit")
-            if (commitCandidate.exists() && !commitCandidate.delete()) {
-                throw IllegalStateException("Unable to clear previous commit candidate")
-            }
-            signedCandidate.copyTo(commitCandidate, overwrite = true)
-            if (!commitCandidate.renameTo(outputFile)) {
-                // renameTo is atomic on the normal same-filesystem path. The fallback still writes
-                // a fully verified file, and the temporary candidate is cleaned below.
-                commitCandidate.copyTo(outputFile, overwrite = true)
-                commitCandidate.delete()
-            }
-            val committedHash = outputFile.sha256OrNull()
-                ?: throw IllegalStateException("Unable to calculate committed APK SHA-256")
-            val candidateHash = signedCandidate.sha256OrNull()
-                ?: throw IllegalStateException("Unable to calculate verified APK SHA-256")
-            if (!committedHash.equals(candidateHash, ignoreCase = true)) {
-                outputFile.delete()
-                throw IllegalStateException("Committed APK SHA-256 differs from verified candidate")
-            }
-            reportOutput = ArtifactRef(
-                fileName = outputFile.name,
-                sizeBytes = outputFile.length(),
-                sha256 = committedHash,
-                signingCertificateSha256 = signature.certificateSha256,
-                signatureVerified = signature.verified,
-            )
-            val report = PatchRunReport(
-                runId = id.toString(),
-                startedAtEpochMs = startedAt,
-                finishedAtEpochMs = System.currentTimeMillis(),
-                stage = PatchRunStage.COMMIT,
-                succeeded = true,
-                input = inputDescriptor,
-                integrity = reportIntegrity ?: IntegrityCheck(true, inputDescriptor.sha256),
-                compatibility = CompatibilityResult(true, CompatibilityCode.COMPATIBLE, "Patcher and final verification gates passed."),
-                patches = args.selectedPatches.entries.flatMap { (bundleUid, names) ->
-                    names.sorted().map { PatchRef(id = it, source = bundleUid.toString()) }
-                },
-                output = reportOutput,
-                provenance = ProvenanceRef(
-                    managerVersion = BuildConfig.VERSION_NAME,
-                    patcherVersion = BuildConfig.PATCHER_VERSION,
-                ),
-            )
-            runCatching { args.onReportReady(report) }
-                .onFailure { args.logger.warn("Patch report delivery failed: " + it.message) }
+            deliverReport(succeeded = true)
 
             val elapsed = System.currentTimeMillis() - startTime
 
@@ -617,6 +386,7 @@ class PatcherWorker(
             succeeded = true
             Result.success()
         } catch (e: ProcessRuntime.ProcessExitException) {
+            deliverReport(succeeded = false, error = e)
             Log.e(
                 tag,
                 "Patcher process exited with code ${e.exitCode}".logFmt(),
@@ -635,6 +405,7 @@ class PatcherWorker(
                 )
             )
         } catch (e: ProcessRuntime.HeapExhaustedException) {
+            deliverReport(succeeded = false, error = e)
             Log.e(
                 tag,
                 "Patcher exhausted its ${e.heapLimitMb}MB heap. ${e.originalStackTrace}".logFmt()
@@ -650,6 +421,7 @@ class PatcherWorker(
                 workDataOf(PROCESS_FAILURE_MESSAGE_KEY to message)
             )
         } catch (e: ProcessRuntime.RemoteFailureException) {
+            deliverReport(succeeded = false, error = e)
             Log.e(
                 tag,
                 "An exception occurred in the remote process while patching. ${e.originalStackTrace}".logFmt()
