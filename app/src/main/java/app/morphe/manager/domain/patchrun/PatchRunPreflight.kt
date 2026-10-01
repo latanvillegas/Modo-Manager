@@ -20,10 +20,14 @@ object PatchRunPreflight {
         integrity: IntegrityCheck = IntegrityCheck(
             archiveReadable = descriptor.sizeBytes > 0,
             actualSha256 = descriptor.sha256,
-            expectedSha256 = profile?.expectedHashes?.singleOrNull(),
         ),
     ): PreflightResult {
         val compatibility = ProfileCompatibility.evaluate(profile, descriptor)
-        return PreflightResult(descriptor, integrity, profile, compatibility)
+        val hashRestricted = profile?.expectedHashes?.isNotEmpty() == true
+        val hashMatches = !hashRestricted || profile!!.expectedHashes.any { it.equals(descriptor.sha256, ignoreCase = true) }
+        val effectiveIntegrity = if (hashRestricted) {
+            integrity.copy(expectedSha256 = if (hashMatches) descriptor.sha256 else "<profile-hash-set>")
+        } else integrity
+        return PreflightResult(descriptor, effectiveIntegrity, profile, compatibility)
     }
 }
