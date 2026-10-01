@@ -15,6 +15,14 @@ class PatchRunPreflightTest {
         assertTrue(PatchRunPreflight.evaluate(apk).allowed)
     }
 
+    @Test fun oneOfMultipleDeclaredHashesIsAccepted() {
+        val profile = ApplicationProfile(
+            id = "p", displayName = "p", packageNames = setOf("example.app"),
+            expectedHashes = setOf("def", "abc"),
+        )
+        assertTrue(PatchRunPreflight.evaluate(apk, profile).allowed)
+    }
+
     @Test fun declaredHashMismatchFailsClosed() {
         val profile = ApplicationProfile(
             id = "p", displayName = "p", packageNames = setOf("example.app"),
