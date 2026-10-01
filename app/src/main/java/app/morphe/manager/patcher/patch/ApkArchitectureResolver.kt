@@ -38,6 +38,11 @@ object ApkArchitectureResolver {
     /** Architecture of a single APK or split archive. */
     suspend fun resolve(file: File): ApkArchitecture = resolve(listOf(file))
 
+    /** ABI names carried by a single APK or split archive, using the same source as [resolve]. */
+    suspend fun abiNames(file: File): Set<String> = withContext(Dispatchers.IO) {
+        abisOf(file).mapTo(linkedSetOf()) { it.lowercase(Locale.ROOT) }
+    }
+
     /**
      * Architecture of an app spread over several files, such as the base APK and the config
      * splits of an installed app, whose native libraries live in a split of their own.
