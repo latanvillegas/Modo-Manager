@@ -494,7 +494,7 @@ class BatchPatchCoordinator(
             },
             onProgress = runProgress::onProgress,
             patchSources = patchSources,
-            applicationProfiles = item.bundles
+            applicationProfiles = patchBundleRepository.sources.value
                 .asSequence()
                 .filter { it.uid in item.selection.keys }
                 .flatMap { it.patchBundle?.applicationProfiles.orEmpty().asSequence() }
