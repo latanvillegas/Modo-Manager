@@ -4,6 +4,7 @@ import app.morphe.manager.domain.patchrun.ApplicationProfile
 import app.morphe.manager.domain.patchrun.ProfileTest
 import app.morphe.manager.domain.patchrun.RiskLevel
 import app.morphe.manager.domain.patchrun.SigningPolicy
+import app.morphe.manager.domain.patchrun.SigningMode
 import app.morphe.manager.domain.patchrun.VersionRule
 
 object Cromite153Profile {
@@ -17,7 +18,7 @@ object Cromite153Profile {
         versionCodes = setOf(801003702L),
         abis = setOf("arm64-v8a"),
         expectedHashes = setOf("9db12af1af021f42b4371e76d0e9fe476a7085bbbbc76bc410a538d028bf6071"),
-        signingPolicy = SigningPolicy(requireVerifiedOutput = true),
+        signingPolicy = SigningPolicy(mode = SigningMode.USER_KEY, requireVerifiedOutput = true),
         tests = listOf(
             ProfileTest("identity", "Package, version name, version code and ABI must match."),
             ProfileTest("source-hash", "The selected source APK must match the declared SHA-256."),
