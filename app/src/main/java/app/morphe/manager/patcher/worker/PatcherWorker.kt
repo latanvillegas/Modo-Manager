@@ -24,6 +24,11 @@ import app.morphe.manager.R
 import app.morphe.manager.data.platform.Filesystem
 import app.morphe.manager.data.room.apps.installed.InstallType
 import app.morphe.manager.domain.installer.InstallerManager
+import app.morphe.manager.domain.patchrun.ApkInspector
+import app.morphe.manager.domain.patchrun.FinalApkPostValidator
+import app.morphe.manager.domain.patchrun.FinalApkVerifier
+import app.morphe.manager.domain.patchrun.PatchRunStage
+import app.morphe.manager.domain.patchrun.PatchRunTransaction
 import app.morphe.manager.domain.installer.RootInstaller
 import app.morphe.manager.domain.manager.KeystoreManager
 import app.morphe.manager.domain.manager.PreferencesManager
@@ -326,6 +331,8 @@ class PatcherWorker(
         }
 
         val patchedApk = fs.tempDir.resolve("patched.apk")
+        val signedCandidate = fs.tempDir.resolve("signed-candidate.apk")
+        val transaction = PatchRunTransaction()
         var succeeded = false
         var autoInstallPending = false
         val completionSoundEnabled = prefs.patcherCompletionSound.get()
@@ -334,6 +341,7 @@ class PatcherWorker(
 
         return try {
             val startTime = System.currentTimeMillis()
+            transaction.advance(PatchRunStage.PATCH)
 
             if (args.input is SelectedApp.Installed) {
                 installedAppRepository.get(args.packageName)?.let {
@@ -495,20 +503,42 @@ class PatcherWorker(
                 )
             }
 
+            transaction.advance(PatchRunStage.SIGN)
             updatePatcherNotification(stepName = signingApkLabel, patchProgress = null)
-            keystoreManager.sign(patchedApk, File(args.output))
+            if (signedCandidate.exists() && !signedCandidate.delete()) {
+                throw IllegalStateException("Unable to clear previous signed candidate")
+            }
+            keystoreManager.sign(patchedApk, signedCandidate)
             updateProgress(state = State.COMPLETED) // Signing
+
+            transaction.advance(PatchRunStage.VERIFY)
+            val signature = FinalApkVerifier().verify(signedCandidate)
+            if (!signature.verified) {
+                throw IllegalStateException("Signed APK verification failed: " + signature.errors.joinToString())
+            }
+            val inputDescriptor = ApkInspector(pm).inspect(inputFile, fs.tempDir)
+            val postValidation = FinalApkPostValidator(pm).validate(signedCandidate, inputDescriptor)
+            if (!postValidation.valid) {
+                throw IllegalStateException("Signed APK post-validation failed: " + postValidation)
+            }
+
+            transaction.advance(PatchRunStage.COMMIT)
+            val outputFile = File(args.output)
+            outputFile.parentFile?.mkdirs()
+            signedCandidate.inputStream().use { input ->
+                outputFile.outputStream().use { output -> input.copyTo(output) }
+            }
 
             val elapsed = System.currentTimeMillis() - startTime
 
             args.logger.info(
                 "$LOG_WORKER_PREFIX_SUCCEEDED $LOG_WORKER_FIELD_OUTPUT=${args.output} " +
-                        "$LOG_WORKER_FIELD_SIZE=${File(args.output).length()} " +
+                        "$LOG_WORKER_FIELD_SIZE=${outputFile.length()} " +
                         "$LOG_WORKER_FIELD_ELAPSED=${elapsed}ms"
             )
 
             Log.i(tag, "Patching succeeded".logFmt())
-            val outputPackageName = pm.getPackageInfo(File(args.output))?.packageName ?: args.packageName
+            val outputPackageName = pm.getPackageInfo(outputFile)?.packageName ?: args.packageName
             autoInstallPending = installerManager.autoInstallAllowed(outputPackageName)
             succeeded = true
             Result.success()
@@ -561,6 +591,9 @@ class PatcherWorker(
                 workDataOf(PROCESS_FAILURE_MESSAGE_KEY to e.stackTraceToString())
             )
         } finally {
+            if (!signedCandidate.delete() && signedCandidate.exists()) {
+                Log.w(tag, "Failed to delete temporary signed candidate: ${signedCandidate.absolutePath}".logFmt())
+            }
             if (!patchedApk.delete() && patchedApk.exists()) {
                 Log.w(tag, "Failed to delete temporary patched APK: ${patchedApk.absolutePath}".logFmt())
             }
