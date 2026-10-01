@@ -525,8 +525,24 @@ class PatcherWorker(
             transaction.advance(PatchRunStage.COMMIT)
             val outputFile = File(args.output)
             outputFile.parentFile?.mkdirs()
-            signedCandidate.inputStream().use { input ->
-                outputFile.outputStream().use { output -> input.copyTo(output) }
+            val commitCandidate = File(outputFile.parentFile ?: fs.tempDir, outputFile.name + ".commit")
+            if (commitCandidate.exists() && !commitCandidate.delete()) {
+                throw IllegalStateException("Unable to clear previous commit candidate")
+            }
+            signedCandidate.copyTo(commitCandidate, overwrite = true)
+            if (!commitCandidate.renameTo(outputFile)) {
+                // renameTo is atomic on the normal same-filesystem path. The fallback still writes
+                // a fully verified file, and the temporary candidate is cleaned below.
+                commitCandidate.copyTo(outputFile, overwrite = true)
+                commitCandidate.delete()
+            }
+            val committedHash = outputFile.sha256OrNull()
+                ?: throw IllegalStateException("Unable to calculate committed APK SHA-256")
+            val candidateHash = signedCandidate.sha256OrNull()
+                ?: throw IllegalStateException("Unable to calculate verified APK SHA-256")
+            if (!committedHash.equals(candidateHash, ignoreCase = true)) {
+                outputFile.delete()
+                throw IllegalStateException("Committed APK SHA-256 differs from verified candidate")
             }
 
             val elapsed = System.currentTimeMillis() - startTime
