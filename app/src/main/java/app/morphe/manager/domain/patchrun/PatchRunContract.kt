@@ -26,7 +26,11 @@ data class IntegrityCheck(val archiveReadable: Boolean, val actualSha256: String
 @Serializable enum class RiskLevel { LOW, MEDIUM, HIGH }
 @Serializable data class VersionRule(val exact: Set<String> = emptySet())
 @Serializable data class ProfilePatchRestriction(val patchId: String, val requires: Set<String> = emptySet(), val incompatibleWith: Set<String> = emptySet())
-@Serializable data class SigningPolicy(val requireVerifiedOutput: Boolean = true)
+@Serializable enum class SigningMode { TEST_KEY, USER_KEY, REQUIRE_SAME_CERTIFICATE, INSTALL_AS_NEW_APP }
+@Serializable data class SigningPolicy(
+    val mode: SigningMode = SigningMode.USER_KEY,
+    val requireVerifiedOutput: Boolean = true,
+)
 @Serializable data class ProfileTest(val id: String, val description: String)
 
 @Serializable
@@ -61,7 +65,13 @@ object ProfileCompatibility {
 }
 
 @Serializable data class PatchRef(val id: String, val source: String? = null, val sourceVersion: String? = null)
-@Serializable data class ArtifactRef(val fileName: String, val sizeBytes: Long, val sha256: String, val signingCertificateSha256: String? = null, val signatureVerified: Boolean? = null)
+@Serializable data class ArtifactRef(
+    val fileName: String,
+    val sizeBytes: Long,
+    val sha256: String,
+    val signingCertificateSha256: Set<String> = emptySet(),
+    val signatureVerified: Boolean? = null,
+)
 @Serializable data class ProvenanceRef(val commit: String? = null, val workflow: String? = null, val workflowRunId: String? = null, val attestation: String? = null)
 
 @Serializable
