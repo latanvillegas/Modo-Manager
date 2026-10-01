@@ -41,7 +41,6 @@ import app.morphe.manager.domain.patchrun.PatchRunError
 import app.morphe.manager.domain.patchrun.PatchRunFailureClassifier
 import app.morphe.manager.domain.patchrun.ApplicationProfile
 import app.morphe.manager.domain.patchrun.PatchRunPreflight
-import app.morphe.manager.domain.patchrun.profiles.BuiltInApplicationProfiles
 import app.morphe.manager.domain.patchrun.ProvenanceRef
 import app.morphe.manager.domain.installer.RootInstaller
 import app.morphe.manager.domain.manager.KeystoreManager
@@ -434,7 +433,7 @@ class PatcherWorker(
 
             val inspectedInput = ApkInspector(pm).inspect(inputFile, fs.tempDir)
             reportInput = inspectedInput
-            resolvedProfile = args.applicationProfile ?: BuiltInApplicationProfiles.resolveExact(inspectedInput)
+            resolvedProfile = args.applicationProfile
             val verifiedIntegrity = ApkInspector(pm).integrity(inputFile)
             val preflight = PatchRunPreflight.evaluate(inspectedInput, resolvedProfile, verifiedIntegrity)
             reportIntegrity = preflight.integrity
