@@ -17,13 +17,12 @@ object PatchRunPreflight {
     fun evaluate(
         descriptor: ApkDescriptor,
         profile: ApplicationProfile? = null,
-    ): PreflightResult {
-        val expectedHash = profile?.expectedHashes?.takeIf { it.isNotEmpty() }?.firstOrNull()
-        val integrity = IntegrityCheck(
+        integrity: IntegrityCheck = IntegrityCheck(
             archiveReadable = descriptor.sizeBytes > 0,
             actualSha256 = descriptor.sha256,
-            expectedSha256 = expectedHash,
-        )
+            expectedSha256 = profile?.expectedHashes?.singleOrNull(),
+        ),
+    ): PreflightResult {
         val compatibility = ProfileCompatibility.evaluate(profile, descriptor)
         return PreflightResult(descriptor, integrity, profile, compatibility)
     }
