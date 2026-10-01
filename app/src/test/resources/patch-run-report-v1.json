@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "runId": "golden-run",
+  "startedAtEpochMs": 1000,
+  "finishedAtEpochMs": 2000,
+  "stage": "COMMIT",
+  "succeeded": true,
+  "profileId": null,
+  "input": {
+    "packageName": "example.app",
+    "versionName": "1.0",
+    "versionCode": 7,
+    "abis": ["arm64-v8a"],
+    "minSdk": 26,
+    "targetSdk": 35,
+    "containerType": "UNIVERSAL_APK",
+    "sizeBytes": 100,
+    "sha256": "abc",
+    "signingCertificateSha256": []
+  },
+  "integrity": {
+    "archiveReadable": true,
+    "actualSha256": "abc",
+    "expectedSha256": null
+  },
+  "compatibility": {
+    "compatible": true,
+    "code": "COMPATIBLE",
+    "reason": "compatible"
+  },
+  "patches": [],
+  "output": null,
+  "errors": [],
+  "logs": [],
+  "provenance": null
+}

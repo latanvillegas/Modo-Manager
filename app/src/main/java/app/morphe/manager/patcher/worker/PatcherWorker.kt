@@ -24,6 +24,25 @@ import app.morphe.manager.R
 import app.morphe.manager.data.platform.Filesystem
 import app.morphe.manager.data.room.apps.installed.InstallType
 import app.morphe.manager.domain.installer.InstallerManager
+import app.morphe.manager.domain.patchrun.ApkInspector
+import app.morphe.manager.domain.patchrun.FinalApkPostValidator
+import app.morphe.manager.domain.patchrun.FinalApkVerifier
+import app.morphe.manager.domain.patchrun.PatchRunStage
+import app.morphe.manager.domain.patchrun.PatchRunTransaction
+import app.morphe.manager.domain.patchrun.SigningPolicy
+import app.morphe.manager.domain.patchrun.SigningPolicyValidator
+import app.morphe.manager.domain.patchrun.ArtifactRef
+import app.morphe.manager.domain.patchrun.CompatibilityCode
+import app.morphe.manager.domain.patchrun.CompatibilityResult
+import app.morphe.manager.domain.patchrun.IntegrityCheck
+import app.morphe.manager.domain.patchrun.PatchRef
+import app.morphe.manager.domain.patchrun.PatchRunReport
+import app.morphe.manager.domain.patchrun.PatchRunError
+import app.morphe.manager.domain.patchrun.PatchRunFailureClassifier
+import app.morphe.manager.domain.patchrun.ApplicationProfile
+import app.morphe.manager.domain.patchrun.ApplicationProfileResolver
+import app.morphe.manager.domain.patchrun.PatchRunPreflight
+import app.morphe.manager.domain.patchrun.ProvenanceRef
 import app.morphe.manager.domain.installer.RootInstaller
 import app.morphe.manager.domain.manager.KeystoreManager
 import app.morphe.manager.domain.manager.PreferencesManager
@@ -85,7 +104,15 @@ class PatcherWorker(
          */
         val announceCompletion: Boolean = true,
         /** Apps already done and the queue total, null for a single run. */
-        val queuePosition: Pair<Int, Int>? = null
+        val queuePosition: Pair<Int, Int>? = null,
+        /** Orchestration policy; default keeps the manager's existing verified user-key flow. */
+        val signingPolicy: SigningPolicy = SigningPolicy(),
+        /** Optional explicit profile override. Null lets bundle metadata resolve it generically. */
+        val applicationProfile: ApplicationProfile? = null,
+        /** Declarative profiles supplied by the selected patch bundles. */
+        val applicationProfiles: List<ApplicationProfile> = emptyList(),
+        /** Receives the terminal report; UI/storage decides where and how to persist/export it. */
+        val onReportReady: suspend (PatchRunReport) -> Unit = {},
     ) {
         val packageName get() = input.packageName
     }
@@ -230,6 +257,7 @@ class PatcherWorker(
             // This does not always show up for some reason
             setForeground(getForegroundInfo())
         } catch (e: Exception) {
+            // Foreground promotion happens before runPatcher/report context exists and is non-fatal.
             // Foreground promotion can fail on some devices or when notification permission is
             // denied. Log it but continue - patching still works, just with less OS protection
             Log.w(tag, "Failed to promote worker to foreground service:".logFmt(), e)
@@ -326,9 +354,58 @@ class PatcherWorker(
         }
 
         val patchedApk = fs.tempDir.resolve("patched.apk")
+        val signedCandidate = fs.tempDir.resolve("signed-candidate.apk")
+        val transaction = PatchRunTransaction()
         var succeeded = false
         var autoInstallPending = false
         val completionSoundEnabled = prefs.patcherCompletionSound.get()
+        val startedAt = System.currentTimeMillis()
+        var reportInput: app.morphe.manager.domain.patchrun.ApkDescriptor? = null
+        var reportIntegrity: IntegrityCheck? = null
+        var reportOutput: ArtifactRef? = null
+        var reportCompatibility: CompatibilityResult? = null
+        var resolvedProfile: ApplicationProfile? = null
+        var reportDelivered = false
+
+        suspend fun deliverTerminalReport(success: Boolean, error: Throwable? = null) {
+            if (reportDelivered) return
+            val input = reportInput ?: return
+            val report = PatchRunReport(
+                runId = id.toString(),
+                startedAtEpochMs = startedAt,
+                finishedAtEpochMs = System.currentTimeMillis(),
+                stage = transaction.stage,
+                succeeded = success,
+                input = input,
+                integrity = reportIntegrity ?: IntegrityCheck(true, input.sha256),
+                compatibility = reportCompatibility
+                    ?: CompatibilityResult(true, CompatibilityCode.COMPATIBLE, "No application profile selected; bundle compatibility is authoritative."),
+                patches = args.selectedPatches.entries.flatMap { (bundleUid, names) ->
+                    names.sorted().map { PatchRef(id = it, source = bundleUid.toString()) }
+                },
+                output = reportOutput,
+                errors = if (error == null) emptyList() else listOf(
+                    PatchRunError(
+                        code = PatchRunFailureClassifier.code(transaction.stage, isStopped),
+                        stage = transaction.stage,
+                        message = error.message ?: error.javaClass.simpleName,
+                        causeType = error.javaClass.name,
+                    )
+                ),
+                profileId = resolvedProfile?.id,
+                provenance = ProvenanceRef(
+                    managerVersion = BuildConfig.VERSION_NAME,
+                    patcherVersion = BuildConfig.PATCHER_VERSION,
+                ),
+            )
+            try {
+                args.onReportReady(report)
+                reportDelivered = true
+            } catch (error: Exception) {
+                args.logger.warn("Patch report delivery failed: " + error.message)
+            }
+        }
+
         val successSoundUri = prefs.patcherSuccessSoundUri.get()
         val errorSoundUri = prefs.patcherErrorSoundUri.get()
 
@@ -356,6 +433,18 @@ class PatcherWorker(
                     source
                 }
             }
+
+            val inspectedInput = ApkInspector(pm).inspect(inputFile, fs.tempDir)
+            reportInput = inspectedInput
+            resolvedProfile = args.applicationProfile ?: ApplicationProfileResolver.resolve(args.applicationProfiles, inspectedInput)
+            val verifiedIntegrity = ApkInspector(pm).integrity(inputFile)
+            val preflight = PatchRunPreflight.evaluate(inspectedInput, resolvedProfile, verifiedIntegrity)
+            reportIntegrity = preflight.integrity
+            reportCompatibility = preflight.compatibility
+            if (!preflight.allowed) {
+                throw IllegalArgumentException("APK preflight rejected input: " + preflight.compatibility.reason)
+            }
+            transaction.advance(PatchRunStage.PATCH)
 
             val useProcessRuntime = prefs.useProcessRuntime.get()
             val stripNativeLibs = prefs.stripUnusedNativeLibs.get()
@@ -495,24 +584,83 @@ class PatcherWorker(
                 )
             }
 
+            transaction.advance(PatchRunStage.SIGN)
             updatePatcherNotification(stepName = signingApkLabel, patchProgress = null)
-            keystoreManager.sign(patchedApk, File(args.output))
+            if (signedCandidate.exists() && !signedCandidate.delete()) {
+                throw IllegalStateException("Unable to clear previous signed candidate")
+            }
+            keystoreManager.sign(patchedApk, signedCandidate)
             updateProgress(state = State.COMPLETED) // Signing
+
+            transaction.advance(PatchRunStage.VERIFY)
+            val signature = FinalApkVerifier().verify(signedCandidate)
+            if (!signature.verified) {
+                throw IllegalStateException("Signed APK verification failed: " + signature.errors.joinToString())
+            }
+            val inputDescriptor = inspectedInput
+            val postValidation = FinalApkPostValidator(pm).validate(signedCandidate, inputDescriptor)
+            if (!postValidation.validFor(args.signingPolicy)) {
+                throw IllegalStateException("Signed APK post-validation failed: " + postValidation)
+            }
+            val policyValidation = SigningPolicyValidator.evaluate(
+                policy = args.signingPolicy,
+                inputPackage = inputDescriptor.packageName,
+                outputPackage = postValidation.outputPackageName
+                    ?: throw IllegalStateException("Final APK package could not be read"),
+                inputCertificates = inputDescriptor.signingCertificateSha256,
+                outputCertificates = signature.certificateSha256,
+                signatureVerified = signature.verified,
+            )
+            if (!policyValidation.valid) {
+                throw IllegalStateException("Signing policy rejected final APK: " + policyValidation.reason)
+            }
+
+            transaction.advance(PatchRunStage.COMMIT)
+            val outputFile = File(args.output)
+            outputFile.parentFile?.mkdirs()
+            val commitCandidate = File(outputFile.parentFile ?: fs.tempDir, outputFile.name + ".commit")
+            if (commitCandidate.exists() && !commitCandidate.delete()) {
+                throw IllegalStateException("Unable to clear previous commit candidate")
+            }
+            signedCandidate.copyTo(commitCandidate, overwrite = true)
+            if (!commitCandidate.renameTo(outputFile)) {
+                // renameTo is atomic on the normal same-filesystem path. The fallback still writes
+                // a fully verified file, and the temporary candidate is cleaned below.
+                commitCandidate.copyTo(outputFile, overwrite = true)
+                commitCandidate.delete()
+            }
+            val committedHash = outputFile.sha256OrNull()
+                ?: throw IllegalStateException("Unable to calculate committed APK SHA-256")
+            val candidateHash = signedCandidate.sha256OrNull()
+                ?: throw IllegalStateException("Unable to calculate verified APK SHA-256")
+            if (!committedHash.equals(candidateHash, ignoreCase = true)) {
+                outputFile.delete()
+                throw IllegalStateException("Committed APK SHA-256 differs from verified candidate")
+            }
+            reportOutput = ArtifactRef(
+                fileName = outputFile.name,
+                sizeBytes = outputFile.length(),
+                sha256 = committedHash,
+                signingCertificateSha256 = signature.certificateSha256,
+                signatureVerified = signature.verified,
+            )
+            deliverTerminalReport(success = true)
 
             val elapsed = System.currentTimeMillis() - startTime
 
             args.logger.info(
                 "$LOG_WORKER_PREFIX_SUCCEEDED $LOG_WORKER_FIELD_OUTPUT=${args.output} " +
-                        "$LOG_WORKER_FIELD_SIZE=${File(args.output).length()} " +
+                        "$LOG_WORKER_FIELD_SIZE=${outputFile.length()} " +
                         "$LOG_WORKER_FIELD_ELAPSED=${elapsed}ms"
             )
 
             Log.i(tag, "Patching succeeded".logFmt())
-            val outputPackageName = pm.getPackageInfo(File(args.output))?.packageName ?: args.packageName
+            val outputPackageName = pm.getPackageInfo(outputFile)?.packageName ?: args.packageName
             autoInstallPending = installerManager.autoInstallAllowed(outputPackageName)
             succeeded = true
             Result.success()
         } catch (e: ProcessRuntime.ProcessExitException) {
+            deliverTerminalReport(success = false, error = e)
             Log.e(
                 tag,
                 "Patcher process exited with code ${e.exitCode}".logFmt(),
@@ -531,6 +679,7 @@ class PatcherWorker(
                 )
             )
         } catch (e: ProcessRuntime.HeapExhaustedException) {
+            deliverTerminalReport(success = false, error = e)
             Log.e(
                 tag,
                 "Patcher exhausted its ${e.heapLimitMb}MB heap. ${e.originalStackTrace}".logFmt()
@@ -546,6 +695,7 @@ class PatcherWorker(
                 workDataOf(PROCESS_FAILURE_MESSAGE_KEY to message)
             )
         } catch (e: ProcessRuntime.RemoteFailureException) {
+            deliverTerminalReport(success = false, error = e)
             Log.e(
                 tag,
                 "An exception occurred in the remote process while patching. ${e.originalStackTrace}".logFmt()
@@ -555,12 +705,16 @@ class PatcherWorker(
                 workDataOf(PROCESS_FAILURE_MESSAGE_KEY to e.originalStackTrace)
             )
         } catch (e: Exception) {
+            deliverTerminalReport(success = false, error = e)
             Log.e(tag, "An exception occurred while patching".logFmt(), e)
             updateProgress(state = State.FAILED, message = e.stackTraceToString())
             Result.failure(
                 workDataOf(PROCESS_FAILURE_MESSAGE_KEY to e.stackTraceToString())
             )
         } finally {
+            if (!signedCandidate.delete() && signedCandidate.exists()) {
+                Log.w(tag, "Failed to delete temporary signed candidate: ${signedCandidate.absolutePath}".logFmt())
+            }
             if (!patchedApk.delete() && patchedApk.exists()) {
                 Log.w(tag, "Failed to delete temporary patched APK: ${patchedApk.absolutePath}".logFmt())
             }

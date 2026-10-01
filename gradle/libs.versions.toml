@@ -2,6 +2,7 @@
 about-libraries = "15.2.0"
 activity = "1.13.0"
 android-gradle-plugin = "9.4.1"
+apksig = "9.4.1"
 app-icon-loader-coil = "1.5.0"
 appcompat = "1.8.0"
 arsclib = "a28c6fb2a7"
@@ -75,6 +76,9 @@ kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime",
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room-version" }
 room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room-version" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room-version" }
+
+# APK verification
+apksig = { module = "com.android.tools.build:apksig", version.ref = "apksig" }
 
 # Patcher
 arsclib = { module = "com.github.REAndroid:arsclib", version.ref = "arsclib" }

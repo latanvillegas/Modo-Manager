@@ -1,0 +1,65 @@
+package app.morphe.manager.domain.patchrun
+
+import java.io.File
+import java.util.zip.ZipFile
+
+data class ApkPostValidation(
+    val archiveReadable: Boolean,
+    val manifestReadable: Boolean,
+    val dexEntries: Int,
+    val dexHeadersValid: Boolean,
+    val packageMatches: Boolean,
+    val versionMatches: Boolean,
+    val outputPackageName: String?,
+) {
+    fun validFor(policy: SigningPolicy): Boolean =
+        archiveReadable && manifestReadable && dexHeadersValid && versionMatches &&
+            if (policy.mode == SigningMode.INSTALL_AS_NEW_APP) !packageMatches else packageMatches
+}
+
+/**
+ * Structural validation after signing. It deliberately does not know any application profile:
+ * identity is compared with the input descriptor and DEX is checked only when present.
+ */
+internal fun isDexEntry(name: String): Boolean {
+    if (name == "classes.dex") return true
+    if (!name.startsWith("classes") || !name.endsWith(".dex")) return false
+    val suffix = name.removePrefix("classes").removeSuffix(".dex")
+    return suffix.isNotEmpty() && suffix.all(Char::isDigit)
+}
+
+class FinalApkPostValidator(private val pm: app.morphe.manager.util.PM) {
+    fun validate(file: File, input: ApkDescriptor): ApkPostValidation {
+        val info = pm.getPackageInfo(file)
+        var archiveReadable = false
+        var dexEntries = 0
+        var dexHeadersValid = true
+        runCatching {
+            ZipFile(file).use { zip ->
+                archiveReadable = true
+                val entries = zip.entries()
+                while (entries.hasMoreElements()) {
+                    val entry = entries.nextElement()
+                    if (entry.isDirectory || !isDexEntry(entry.name)) continue
+                    dexEntries++
+                    val header = ByteArray(4)
+                    val count = zip.getInputStream(entry).use { it.read(header) }
+                    if (count != 4 || !header.contentEquals(byteArrayOf('d'.code.toByte(), 'e'.code.toByte(), 'x'.code.toByte(), '\n'.code.toByte()))) {
+                        dexHeadersValid = false
+                    }
+                }
+            }
+        }.onFailure { archiveReadable = false }
+
+        return ApkPostValidation(
+            archiveReadable = archiveReadable,
+            manifestReadable = info != null,
+            dexEntries = dexEntries,
+            dexHeadersValid = dexHeadersValid,
+            packageMatches = info?.packageName == input.packageName,
+            versionMatches = info?.versionName == input.versionName &&
+                info?.let { androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(it) } == input.versionCode,
+            outputPackageName = info?.packageName,
+        )
+    }
+}

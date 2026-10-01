@@ -494,6 +494,11 @@ class BatchPatchCoordinator(
             },
             onProgress = runProgress::onProgress,
             patchSources = patchSources,
+            applicationProfiles = patchBundleRepository.sources.value
+                .asSequence()
+                .filter { it.uid in item.selection.keys }
+                .flatMap { it.patchBundle?.applicationProfiles.orEmpty().asSequence() }
+                .toList(),
             announceCompletion = false,
             queuePosition = _state.value?.let { it.processed to it.total }
         )

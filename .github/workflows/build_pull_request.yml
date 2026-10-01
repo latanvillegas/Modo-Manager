@@ -40,9 +40,23 @@ jobs:
 
       - name: Restore release keystore
         if: steps.fork_check.outputs.is_fork == 'false'
+        id: signing_key
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEYSTORE_ENTRY_ALIAS: ${{ secrets.KEYSTORE_ENTRY_ALIAS }}
         run: |
-          echo "${{ secrets.KEYSTORE_B64 }}" | base64 -d > app/keystore.jks
-          ls -la app/keystore.jks
+          set +x
+          rm -f app/keystore.jks
+          if [ -n "$KEYSTORE_B64" ] && printf '%s' "$KEYSTORE_B64" | base64 -d > app/keystore.jks 2>/dev/null \
+             && keytool -list -keystore app/keystore.jks -storepass "$KEYSTORE_PASSWORD" -alias "$KEYSTORE_ENTRY_ALIAS" >/dev/null 2>&1; then
+            echo "release_key_valid=true" >> "$GITHUB_OUTPUT"
+            echo "Release signing key validated."
+          else
+            rm -f app/keystore.jks
+            echo "release_key_valid=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Release signing key is unavailable or invalid; using the Gradle debug test key for this CI artifact."
+          fi
 
       - name: Setup Java
         uses: actions/setup-java@v6
@@ -82,7 +96,11 @@ jobs:
           _JAVA_OPTIONS: "-Djava.awt.headless=true"
         run: |
           chmod +x ./gradlew
-          ./gradlew ${{ steps.fork_check.outputs.gradle_task }} --stacktrace
+          if [ "${{ steps.fork_check.outputs.is_fork }}" = "false" ] && [ "${{ steps.signing_key.outputs.release_key_valid }}" != "true" ]; then
+            ./gradlew ${{ steps.fork_check.outputs.gradle_task }} -PsignAsDebug --stacktrace
+          else
+            ./gradlew ${{ steps.fork_check.outputs.gradle_task }} --stacktrace
+          fi
 
       - name: Rename APK
         run: |
@@ -92,8 +110,29 @@ jobs:
             mv "$f" "${f/${suffix}/}"
           done
 
-      - name: Upload APK
+      - name: Publish artifact metadata
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          WORKFLOW_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+        run: |
+          sha256sum ${{ steps.fork_check.outputs.apk_dir }}/*.apk | tee artifact-sha256.txt
+          {
+            echo "head_sha=$HEAD_SHA"
+            echo "workflow_sha=$WORKFLOW_SHA"
+            echo "workflow=$WORKFLOW_NAME"
+            echo "run_id=$RUN_ID"
+            echo "signing_key=${{ steps.signing_key.outputs.release_key_valid == 'true' && 'release' || 'test' }}"
+          } > artifact-provenance.txt
+
+      - name: Upload reproducible build artifacts
         uses: actions/upload-artifact@v7
         with:
-          archive: false
-          path: ${{ steps.fork_check.outputs.apk_dir }}/*.apk
+          name: manager-build-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            ${{ steps.fork_check.outputs.apk_dir }}/*.apk
+            artifact-sha256.txt
+            artifact-provenance.txt
+          if-no-files-found: error
+          retention-days: 14
