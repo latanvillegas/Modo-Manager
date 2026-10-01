@@ -686,6 +686,7 @@ class PatcherWorker(
                 workDataOf(PROCESS_FAILURE_MESSAGE_KEY to e.originalStackTrace)
             )
         } catch (e: Exception) {
+            deliverTerminalReport(success = false, error = e)
             Log.e(tag, "An exception occurred while patching".logFmt(), e)
             updateProgress(state = State.FAILED, message = e.stackTraceToString())
             Result.failure(
