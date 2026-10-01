@@ -396,9 +396,12 @@ class PatcherWorker(
                     patcherVersion = BuildConfig.PATCHER_VERSION,
                 ),
             )
-            runCatching { args.onReportReady(report) }
-                .onSuccess { reportDelivered = true }
-                .onFailure { args.logger.warn("Patch report delivery failed: " + it.message) }
+            try {
+                args.onReportReady(report)
+                reportDelivered = true
+            } catch (error: Exception) {
+                args.logger.warn("Patch report delivery failed: " + error.message)
+            }
         }
 
         val successSoundUri = prefs.patcherSuccessSoundUri.get()
