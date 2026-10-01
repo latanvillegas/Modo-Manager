@@ -498,7 +498,6 @@ class BatchPatchCoordinator(
                 .asSequence()
                 .filter { it.uid in item.selection.keys }
                 .flatMap { it.patchBundle?.applicationProfiles.orEmpty().asSequence() }
-                .distinctBy { it.id }
                 .toList(),
             announceCompletion = false,
             queuePosition = _state.value?.let { it.processed to it.total }
