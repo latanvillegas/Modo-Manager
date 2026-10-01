@@ -21,6 +21,13 @@ data class ApkPostValidation(
  * Structural validation after signing. It deliberately does not know any application profile:
  * identity is compared with the input descriptor and DEX is checked only when present.
  */
+internal fun isDexEntry(name: String): Boolean {
+    if (name == "classes.dex") return true
+    if (!name.startsWith("classes") || !name.endsWith(".dex")) return false
+    val suffix = name.removePrefix("classes").removeSuffix(".dex")
+    return suffix.isNotEmpty() && suffix.all(Char::isDigit)
+}
+
 class FinalApkPostValidator(private val pm: app.morphe.manager.util.PM) {
     fun validate(file: File, input: ApkDescriptor): ApkPostValidation {
         val info = pm.getPackageInfo(file)
@@ -33,7 +40,7 @@ class FinalApkPostValidator(private val pm: app.morphe.manager.util.PM) {
                 val entries = zip.entries()
                 while (entries.hasMoreElements()) {
                     val entry = entries.nextElement()
-                    if (entry.isDirectory || !entry.name.matches(Regex("""classes(\\d*)?\\.dex"""))) continue
+                    if (entry.isDirectory || !isDexEntry(entry.name)) continue
                     dexEntries++
                     val header = ByteArray(4)
                     val count = zip.getInputStream(entry).use { it.read(header) }
