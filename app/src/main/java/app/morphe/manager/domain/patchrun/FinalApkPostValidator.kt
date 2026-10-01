@@ -10,8 +10,11 @@ data class ApkPostValidation(
     val dexHeadersValid: Boolean,
     val packageMatches: Boolean,
     val versionMatches: Boolean,
+    val outputPackageName: String?,
 ) {
-    val valid get() = archiveReadable && manifestReadable && dexHeadersValid && packageMatches && versionMatches
+    fun validFor(policy: SigningPolicy): Boolean =
+        archiveReadable && manifestReadable && dexHeadersValid && versionMatches &&
+            if (policy.mode == SigningMode.INSTALL_AS_NEW_APP) !packageMatches else packageMatches
 }
 
 /**
@@ -49,6 +52,7 @@ class FinalApkPostValidator(private val pm: app.morphe.manager.util.PM) {
             packageMatches = info?.packageName == input.packageName,
             versionMatches = info?.versionName == input.versionName &&
                 info?.let { androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(it) } == input.versionCode,
+            outputPackageName = info?.packageName,
         )
     }
 }
