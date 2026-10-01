@@ -25,6 +25,7 @@ import app.morphe.manager.R
 import app.morphe.manager.data.platform.Filesystem
 import app.morphe.manager.data.room.apps.installed.InstallType
 import app.morphe.manager.domain.installer.InstallerManager
+import app.morphe.manager.domain.patchrun.ApplicationProfile
 import app.morphe.manager.domain.manager.PatchOptionsPreferencesManager
 import app.morphe.manager.domain.manager.PreferencesManager
 import app.morphe.manager.domain.repository.*
@@ -508,6 +509,7 @@ class PatcherViewModel(
 
     /** Patch sources collected during preflight, forwarded to the worker for logging. */
     private var patchSourcesForLog: List<PatchSourceRef> = emptyList()
+    private var applicationProfilesForRun: List<ApplicationProfile> = emptyList()
 
     /** True when the current patching step has been running for over a minute. */
     val showLongStepWarning: StateFlow<Boolean> = patchRun.showLongStepWarning
@@ -599,6 +601,12 @@ class PatcherViewModel(
         }
 
         patchSourcesForLog = collectSelectedBundleMetadata()
+        applicationProfilesForRun = patchBundleRepository.sources.value
+            .asSequence()
+            .filter { it.uid in appliedSelection.keys }
+            .flatMap { it.patchBundle?.applicationProfiles.orEmpty().asSequence() }
+            .distinctBy { it.id }
+            .toList()
 
         // Check that all selected bundles are compatible with the patcher bundled in this
         // version of the manager. If a bundle requires a newer patcher, block and show a dialog
@@ -971,6 +979,7 @@ class PatcherViewModel(
             },
             onProgress = patchRun::onProgress,
             patchSources = patchSourcesForLog,
+            applicationProfiles = applicationProfilesForRun,
         )
     }
 
