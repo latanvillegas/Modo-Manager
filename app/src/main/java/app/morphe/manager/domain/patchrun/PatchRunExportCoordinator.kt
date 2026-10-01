@@ -21,6 +21,10 @@ class PatchRunExportCoordinator(private val exporter: PatchRunExporter) {
             return Result.failure(IllegalArgumentException("Committed APK is unavailable"))
         }
         val logText = logs.joinToString(separator = "\n") { (level, message) -> "[$level] $message" }
-        return runCatching { exporter.export(treeUri, committedApk, report, logText) }
+        return try {
+            Result.success(exporter.export(treeUri, committedApk, report, logText))
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
     }
 }
