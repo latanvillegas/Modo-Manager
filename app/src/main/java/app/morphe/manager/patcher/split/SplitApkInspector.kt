@@ -56,7 +56,11 @@ object SplitApkInspector {
             }
             return block(temp)
         } finally {
-            temp.delete()
+            // Inspection cleanup is diagnostic only: it must not replace a successful result or
+            // mask the parsing/inspection failure that brought execution through this block.
+            if (!temp.delete() && temp.exists()) {
+                Log.w(tag, "Failed to delete temporary split inspection APK: ${temp.absolutePath}")
+            }
         }
     }
 
