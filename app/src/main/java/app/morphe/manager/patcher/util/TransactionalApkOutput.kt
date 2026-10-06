@@ -24,6 +24,42 @@ object TransactionalApkOutput {
         }
     }
 
+    /**
+     * Atomically as possible promotes [pendingOutput] while preserving the last good output.
+     * A failed copy/rename restores the previous artifact before propagating the error.
+     */
+    fun commit(finalOutput: File, pendingOutput: File) {
+        require(pendingOutput.isFile) { "Pending patched APK does not exist" }
+        val backup = previous(finalOutput)
+        backup.delete()
+
+        if (finalOutput.exists()) {
+            check(finalOutput.renameTo(backup)) {
+                "Could not preserve previous output before transactional commit"
+            }
+        }
+
+        try {
+            if (!pendingOutput.renameTo(finalOutput)) {
+                pendingOutput.copyTo(finalOutput, overwrite = true)
+                pendingOutput.delete()
+            }
+            backup.delete()
+        } catch (error: Throwable) {
+            finalOutput.delete()
+            if (backup.exists()) {
+                check(backup.renameTo(finalOutput) || runCatching {
+                    backup.copyTo(finalOutput, overwrite = true)
+                    backup.delete()
+                    true
+                }.getOrDefault(false)) {
+                    "Could not restore previous patched APK after failed commit"
+                }
+            }
+            throw error
+        }
+    }
+
     fun pending(finalOutput: File) =
         File(finalOutput.parentFile, "${finalOutput.name}.pending")
 
