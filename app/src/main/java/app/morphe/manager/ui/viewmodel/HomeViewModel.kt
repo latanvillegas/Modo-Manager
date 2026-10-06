@@ -757,7 +757,7 @@ class HomeViewModel(
         val app = pendingSelectedApp
         pendingSelectedApp = null
         if (app is SelectedApp.Local && app.temporary) {
-            app.file.delete()
+            cleanupTemporaryApk(app.file)
         }
     }
 
@@ -2589,7 +2589,7 @@ class HomeViewModel(
                 actualPackage = selectedApp.packageName
             )
             if (selectedApp is SelectedApp.Local && selectedApp.temporary) {
-                selectedApp.file.delete()
+                cleanupTemporaryApk(selectedApp.file)
             }
             cleanupPendingData()
             return
@@ -2664,7 +2664,7 @@ class HomeViewModel(
             // Truly no patches exist for this package in any enabled bundle
             app.toast(app.getString(R.string.home_no_patches_available))
             if (selectedApp is SelectedApp.Local && selectedApp.temporary) {
-                selectedApp.file.delete()
+                cleanupTemporaryApk(selectedApp.file)
             }
             cleanupPendingData()
             return
@@ -3536,7 +3536,7 @@ class HomeViewModel(
         if (!keepSelectedApp) {
             pendingSelectedApp?.let { app ->
                 if (app is SelectedApp.Local && app.temporary) {
-                    app.file.delete()
+                    cleanupTemporaryApk(app.file)
                 }
             }
             pendingSelectedApp = null
@@ -3559,7 +3559,7 @@ class HomeViewModel(
         runCatching { app.unregisterReceiver(packageChangeReceiver) }
         val pending = pendingSelectedApp
         if (pending is SelectedApp.Local && pending.temporary) {
-            pending.file.delete()
+            cleanupTemporaryApk(pending.file)
         }
     }
 
@@ -3573,6 +3573,12 @@ class HomeViewModel(
      * uiTempDir uses getDir() which is part of the app's private files and is never
      * cleared by the system automatically.
      */
+    private fun cleanupTemporaryApk(file: File) {
+        if (!file.delete() && file.exists()) {
+            Log.w(tag, "Failed to delete temporary APK: ${file.absolutePath}")
+        }
+    }
+
     private fun cleanupPreparedApkAfterFailure(file: File?) {
         file ?: return
         if (!file.delete() && file.exists()) {
@@ -3602,7 +3608,7 @@ class HomeViewModel(
                 selectedFile.outputStream().use { output -> input.copyTo(output) }
             }
             if (bytesCopied == null || bytesCopied == 0L) {
-                selectedFile.delete()
+                cleanupTemporaryApk(selectedFile)
                 return@withContext ApkLoadResult.Unreadable
             }
 
@@ -3614,7 +3620,7 @@ class HomeViewModel(
 
             if (packageInfo == null) {
                 Log.w(tag, "Picked file $fileName could not be parsed as an APK")
-                selectedFile.delete()
+                cleanupTemporaryApk(selectedFile)
                 return@withContext ApkLoadResult.NotAnApk
             }
 
