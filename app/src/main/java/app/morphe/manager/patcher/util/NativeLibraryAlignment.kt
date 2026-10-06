@@ -27,6 +27,7 @@ object NativeLibraryAlignment {
 
             RandomAccessFile(apk, "r").use { file ->
                 val result = mutableListOf<MisalignedEntry>()
+                val verifiedLibraries = mutableSetOf<String>()
                 var offset = 0L
                 while (offset + 30 <= file.length()) {
                     file.seek(offset)
@@ -48,8 +49,11 @@ object NativeLibraryAlignment {
                     val dataOffset = offset + 30L + nameLength + extraLength
                     val compressedSize = zip.getEntry(name)?.compressedSize ?: break
 
-                    if (name in storedLibraries && dataOffset % ALIGNMENT != 0L) {
-                        result += MisalignedEntry(name, dataOffset)
+                    if (name in storedLibraries) {
+                        verifiedLibraries += name
+                        if (dataOffset % ALIGNMENT != 0L) {
+                            result += MisalignedEntry(name, dataOffset)
+                        }
                     }
 
                     offset = dataOffset + compressedSize
@@ -59,6 +63,10 @@ object NativeLibraryAlignment {
                         val possibleSignature = readIntLe(file)
                         offset += if (possibleSignature == DATA_DESCRIPTOR_SIGNATURE) 16 else 12
                     }
+                }
+                check(verifiedLibraries == storedLibraries) {
+                    "Could not verify local offsets for all stored native libraries; " +
+                        "verified=${verifiedLibraries.sorted()} expected=${storedLibraries.sorted()}"
                 }
                 result
             }
