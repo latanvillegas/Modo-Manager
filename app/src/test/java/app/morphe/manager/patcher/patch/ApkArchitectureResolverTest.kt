@@ -8,6 +8,7 @@ package app.morphe.manager.patcher.patch
 import app.morphe.patcher.patch.ApkArchitecture
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 /**
  * The architecture patches declare their availability against. Reading it wrong hides a patch the
