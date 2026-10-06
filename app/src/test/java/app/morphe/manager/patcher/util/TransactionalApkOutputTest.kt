@@ -4,6 +4,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFails
 import kotlin.test.assertTrue
 
 class TransactionalApkOutputTest {
@@ -52,6 +53,25 @@ class TransactionalApkOutputTest {
             TransactionalApkOutput.commit(output, pending)
             assertEquals("new", output.readText())
             assertFalse(pending.exists())
+            assertFalse(TransactionalApkOutput.previous(output).exists())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `empty pending output is rejected before known good output is moved`() {
+        val dir = createTempDir(prefix = "morphe-transaction-")
+        val output = File(dir, "patched.apk")
+        val pending = TransactionalApkOutput.pending(output)
+        try {
+            output.writeText("known-good")
+            pending.createNewFile()
+
+            assertFails { TransactionalApkOutput.commit(output, pending) }
+
+            assertEquals("known-good", output.readText())
+            assertTrue(pending.exists())
             assertFalse(TransactionalApkOutput.previous(output).exists())
         } finally {
             dir.deleteRecursively()
