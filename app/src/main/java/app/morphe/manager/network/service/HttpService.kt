@@ -219,12 +219,13 @@ class HttpService(
         onProgress: ((bytesRead: Long, contentLength: Long?) -> Unit)?
     ) = coroutineScope {
         saveLocation.parentFile?.mkdirs()
-        saveLocation.delete()
 
-        // Pre-allocate the file so threads can write at independent offsets without coordination
+        // Always start from an empty file. CREATE alone preserves bytes from an older, longer
+        // download, and FileChannel.truncate(totalSize) does not enlarge a shorter file.
         FileChannel.open(
             saveLocation.toPath(),
             StandardOpenOption.CREATE,
+            StandardOpenOption.TRUNCATE_EXISTING,
             StandardOpenOption.WRITE,
             StandardOpenOption.READ
         ).use { fileChannel ->
