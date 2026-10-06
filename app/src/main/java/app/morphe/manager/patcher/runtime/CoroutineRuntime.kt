@@ -26,6 +26,7 @@ class CoroutineRuntime(private val context: Context) : Runtime(context) {
         onPatchCompleted: suspend (String) -> Unit,
         onProgress: ProgressEventHandler,
         skipUnneededSplits: Boolean,
+        selectedAbi: String?,
         onMergedApkReady: (suspend (File) -> Unit)?,
         // This runtime patches in the app's own process and gets one attempt at it
         onRestart: suspend () -> Unit
@@ -65,6 +66,7 @@ class CoroutineRuntime(private val context: Context) : Runtime(context) {
                 workspace = File(cacheDir),
                 logger = logger,
                 skipUnneededSplits = skipUnneededSplits,
+                selectedAbi = selectedAbi,
                 onEvent = { event ->
                     val message = event.toLocalizedString(context)
                     logger.info(message)

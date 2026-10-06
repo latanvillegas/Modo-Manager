@@ -14,6 +14,7 @@ data class Parameters(
     val outputFile: String,
     val configurations: List<PatchConfiguration>,
     val skipUnneededSplits: Boolean = false,
+    val selectedAbi: String? = null,
     // If non-null, PatcherProcess writes the merged mono-APK to this path after prepareIfNeeded.
     // ProcessRuntime reads it back so the main process knows the merged file location
     val mergedInputFile: String? = null

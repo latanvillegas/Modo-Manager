@@ -157,6 +157,26 @@ class PatcherViewModel(
     private val selectedApp = input.selectedApp
     val packageName = selectedApp.packageName
     val version = selectedApp.version
+    val selectedAbi: String? get() = input.selectedAbi
+
+    /** ABIs physically present in the selected input, for the pre-patch architecture picker. */
+    suspend fun availableAbis(): List<String> = withContext(Dispatchers.IO) {
+        when (val selected = selectedApp) {
+            is SelectedApp.Local ->
+                if (SplitApkPreparer.isSplitArchive(selected.file)) {
+                    SplitApkPreparer.splitArchiveAbis(selected.file)
+                } else {
+                    app.morphe.manager.patcher.util.NativeLibStripper.extractAbisFromApk(selected.file)
+                }
+            is SelectedApp.Installed -> {
+                val info = pm.getPackageInfo(selected.packageName)?.applicationInfo
+                (listOfNotNull(info?.sourceDir) + info?.splitSourceDirs.orEmpty())
+                    .flatMap { app.morphe.manager.patcher.util.NativeLibStripper.extractAbisFromApk(File(it)) }
+                    .distinct()
+            }
+        }
+    }
+
 
     /**
      * How the finished APK differs from the install this run was aimed at, or null when it lands
@@ -625,6 +645,14 @@ class PatcherViewModel(
             patchOptionsPrefs.exportPatchOptions(packageName)
         }.restrictTo(input.selectedPatches)
 
+        input.selectedAbi?.let { requestedAbi ->
+            val abis = availableAbis()
+            require(requestedAbi in abis) {
+                "Selected ABI $requestedAbi is not present in the input; available=${abis.joinToString(",")}"
+            }
+            ApkArchitectureResolver.ofSelected(abis, requestedAbi)
+        }
+
         val pathFailures = withContext(Dispatchers.IO) { validateOptionPaths(optionsToValidate) }
         if (pathFailures.isNotEmpty()) {
             inaccessibleOptionPaths = InaccessibleOptionPathsState(
@@ -973,6 +1001,7 @@ class PatcherViewModel(
             },
             onProgress = patchRun::onProgress,
             patchSources = patchSourcesForLog,
+            selectedAbi = input.selectedAbi,
         )
     }
 

@@ -8,6 +8,7 @@ package app.morphe.manager.patcher.patch
 import app.morphe.patcher.patch.ApkArchitecture
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 /**
  * The architecture patches declare their availability against. Reading it wrong hides a patch the
@@ -56,4 +57,23 @@ class ApkArchitectureResolverTest {
     fun `legacy armeabi counts as the 32 bit ARM target`() {
         assertEquals(ApkArchitecture.ARMEABI_V7A, resolve("armeabi", device = arm32Device))
     }
+
+    @Test
+    fun `explicit ABI resolves architecture when present`() {
+        assertEquals(
+            ApkArchitecture.ARMEABI_V7A,
+            ApkArchitectureResolver.ofSelected(
+                listOf("arm64-v8a", "armeabi-v7a"),
+                "armeabi-v7a"
+            )
+        )
+    }
+
+    @Test
+    fun `explicit ABI absent from input is rejected`() {
+        assertFailsWith<IllegalArgumentException> {
+            ApkArchitectureResolver.ofSelected(listOf("arm64-v8a"), "x86_64")
+        }
+    }
+
 }

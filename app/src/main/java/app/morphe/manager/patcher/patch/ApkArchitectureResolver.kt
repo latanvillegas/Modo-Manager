@@ -46,6 +46,22 @@ object ApkArchitectureResolver {
         of(files.filter { it.exists() }.flatMap(::abisOf))
     }
 
+    /**
+     * Resolves an explicit ABI chosen by the user. Null keeps automatic device selection.
+     * The requested ABI must actually exist in the input; otherwise the run is rejected before
+     * patch compatibility is evaluated.
+     */
+    fun ofSelected(abis: Collection<String>, selectedAbi: String?): ApkArchitecture {
+        if (selectedAbi == null) return of(abis)
+        val normalized = selectedAbi.lowercase(Locale.ROOT)
+        val present = abis.map { it.lowercase(Locale.ROOT) }.toSet()
+        require(normalized in present) {
+            "Selected ABI $selectedAbi is not present in the input"
+        }
+        return Abi.architectureOf(normalized)
+            ?: throw IllegalArgumentException("Unsupported ABI: $selectedAbi")
+    }
+
     /** Architecture an APK carrying [abis] under lib/ is patched for on this device. */
     fun of(abis: Collection<String>): ApkArchitecture =
         of(abis, Build.SUPPORTED_ABIS?.toList().orEmpty())
@@ -63,6 +79,11 @@ object ApkArchitectureResolver {
             ?: Abi.NAMES.first { it in present }
 
         return Abi.architectureOf(abi) ?: ApkArchitecture.UNIVERSAL
+    }
+
+    fun abisOf(selectedApp: SelectedApp, pm: PM): List<String> = when (selectedApp) {
+        is SelectedApp.Local -> abisOf(selectedApp.file)
+        is SelectedApp.Installed -> installedApks(selectedApp.packageName, pm).flatMap(::abisOf).distinct()
     }
 
     private fun installedApks(packageName: String, pm: PM): List<File> {

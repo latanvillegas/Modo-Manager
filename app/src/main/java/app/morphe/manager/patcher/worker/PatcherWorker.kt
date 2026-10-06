@@ -37,6 +37,11 @@ import app.morphe.manager.patcher.runtime.coerceMemoryLimit
 import app.morphe.manager.patcher.runtime.heapLimitMebibytes
 import app.morphe.manager.patcher.split.SplitApkPreparer
 import app.morphe.manager.patcher.util.NativeLibStripper
+import app.morphe.manager.patcher.util.NativeLibraryAlignment
+import app.morphe.manager.patcher.util.ApkPreflight
+import app.morphe.manager.patcher.util.PatchRunReport
+import app.morphe.manager.patcher.util.PatchStoragePreflight
+import app.morphe.manager.patcher.util.TransactionalApkOutput
 import app.morphe.manager.ui.model.SelectedApp
 import app.morphe.manager.ui.model.State
 import app.morphe.manager.util.*
@@ -77,6 +82,8 @@ class PatcherWorker(
         val setInputFile: suspend (File, Boolean, Boolean) -> Unit,
         val onProgress: ProgressEventHandler,
         val patchSources: List<PatchSourceRef> = emptyList(),
+        /** Optional ABI selected by the user; null keeps automatic device resolution. */
+        val selectedAbi: String? = null,
         /**
          * Batch runs announce the whole queue once instead of every app, so the completion
          * tone and notification are suppressed per item.
@@ -303,6 +310,7 @@ class PatcherWorker(
         }
 
         val patchedApk = fs.tempDir.resolve("patched.apk")
+        var preparedRuntimeInput: File? = null
         var succeeded = false
         var autoInstallPending = false
         val completionSoundEnabled = prefs.patcherCompletionSound.get()
@@ -334,9 +342,39 @@ class PatcherWorker(
                 }
             }
 
+            val inputIsSplitArchive = SplitApkPreparer.isSplitArchive(inputFile)
+
+            val initialDeviceStats = applicationContext.deviceStats()
+            PatchStoragePreflight.requireEnoughSpace(inputFile, initialDeviceStats?.storageAvailable)
+            args.logger.info(
+                "[Preflight] storage available=${initialDeviceStats?.storageAvailable ?: -1} " +
+                    "required=${PatchStoragePreflight.requiredBytes(inputFile.length())}"
+            )
+
+            // Generic preflight: reject structurally invalid APKs before the patcher mutates anything.
+            // Split archives are validated after SplitApkPreparer has produced the mono APK.
+            if (!inputIsSplitArchive) {
+                val preflight = ApkPreflight.inspect(inputFile)
+                preflight.findings.forEach { finding ->
+                    val message = "[Preflight] ${finding.code}: ${finding.message}"
+                    when (finding.severity) {
+                        ApkPreflight.Severity.ERROR -> args.logger.error(message)
+                        ApkPreflight.Severity.WARNING -> args.logger.warn(message)
+                        ApkPreflight.Severity.INFO -> args.logger.info(message)
+                    }
+                }
+                check(preflight.canPatch) {
+                    "APK preflight failed; input was not modified"
+                }
+                args.logger.info(
+                    "[Preflight] sha256=${preflight.sha256} size=${preflight.size} " +
+                        "dex=${preflight.dexEntries.size} native=${preflight.nativeEntries.size} " +
+                        "abis=${preflight.abis.joinToString(",")}"
+                )
+            }
+
             val useProcessRuntime = prefs.useProcessRuntime.get()
             val stripNativeLibs = prefs.stripUnusedNativeLibs.get()
-            val inputIsSplitArchive = SplitApkPreparer.isSplitArchive(inputFile)
             // The architecture the patches were selected against, worth a line of its own now
             // that a patch can declare itself unavailable for the one the input carries. Read
             // from the app rather than from [inputFile], which for an installed one is the base
@@ -345,7 +383,7 @@ class PatcherWorker(
             val selectedCount = args.selectedPatches.values.sumOf { it.size }
 
             // Log device environment for diagnostics
-            val deviceStats = applicationContext.deviceStats()
+            val deviceStats = initialDeviceStats
 
             // What this build of Morphe brings to the run. Every bug report needs the versions,
             // and native lib stripping silently changes what ends up in the output APK
@@ -409,6 +447,21 @@ class PatcherWorker(
 
             val options = args.options.restrictTo(args.selectedPatches)
 
+            // For a regular APK, strip a temporary input copy before patching. The patcher then
+            // writes and 16 KiB-aligns the final APK itself. Rewriting patchedApk afterwards would
+            // move STORED .so entries and undo that alignment.
+            val runtimeInputFile = if (stripNativeLibs && !inputIsSplitArchive) {
+                val preparedInput = File.createTempFile("abi-prepared-", ".apk", fs.tempDir)
+                preparedRuntimeInput = preparedInput
+                inputFile.copyTo(preparedInput, overwrite = true)
+                val outputAbis = args.selectedAbi?.let(::listOf)
+                    ?: Build.SUPPORTED_ABIS.filter { it.isNotBlank() }
+                NativeLibStripper.strip(preparedInput, outputAbis, args.logger)
+                preparedInput
+            } else {
+                inputFile
+            }
+
             // After merging a split archive (in either runtime), save the resulting mono-APK
             // directly to originalApksDir so it is used for repatching instead of the archive
             val onMergedApkReady: suspend (File) -> Unit = { mergedFile ->
@@ -426,17 +479,18 @@ class PatcherWorker(
 
             try {
                 runtime.execute(
-                    inputFile.absolutePath,
-                    patchedApk.absolutePath,
-                    args.packageName,
-                    args.selectedPatches,
-                    options,
-                    args.logger,
-                    onPatchCompleted,
-                    ::updateProgress,
-                    stripNativeLibs,
-                    onMergedApkReady,
-                    onRestart
+                    inputFile = runtimeInputFile.absolutePath,
+                    outputFile = patchedApk.absolutePath,
+                    packageName = args.packageName,
+                    selectedPatches = args.selectedPatches,
+                    options = options,
+                    logger = args.logger,
+                    onPatchCompleted = onPatchCompleted,
+                    onProgress = ::updateProgress,
+                    skipUnneededSplits = stripNativeLibs,
+                    selectedAbi = args.selectedAbi,
+                    onMergedApkReady = onMergedApkReady,
+                    onRestart = onRestart,
                 )
             } catch (e: Exception) {
                 val fallbackReason = when {
@@ -456,26 +510,127 @@ class PatcherWorker(
                 args.logger.logCoroutineHeap()
 
                 CoroutineRuntime(applicationContext).execute(
-                    inputFile.absolutePath,
-                    patchedApk.absolutePath,
-                    args.packageName,
-                    args.selectedPatches,
-                    options,
-                    args.logger,
-                    onPatchCompleted,
-                    ::updateProgress,
-                    stripNativeLibs,
-                    onMergedApkReady,
-                    onRestart
+                    inputFile = runtimeInputFile.absolutePath,
+                    outputFile = patchedApk.absolutePath,
+                    packageName = args.packageName,
+                    selectedPatches = args.selectedPatches,
+                    options = options,
+                    logger = args.logger,
+                    onPatchCompleted = onPatchCompleted,
+                    onProgress = ::updateProgress,
+                    skipUnneededSplits = stripNativeLibs,
+                    selectedAbi = args.selectedAbi,
+                    onMergedApkReady = onMergedApkReady,
+                    onRestart = onRestart,
                 )
             }
 
-            if (stripNativeLibs && !inputIsSplitArchive) {
-                NativeLibStripper.strip(patchedApk, args.logger)
+            // Patcher output is 16 KiB aligned, but any post-patch ZIP rewrite can move STORED
+            // native libraries. Never sign/export an APK that Android cannot mmap safely.
+            NativeLibraryAlignment.requireAligned(patchedApk)
+
+            // Validate the patcher's unsigned output before signing or exporting it.
+            val unsignedPreflight = ApkPreflight.inspect(patchedApk)
+            unsignedPreflight.findings.forEach { finding ->
+                val message = "[Postflight] ${finding.code}: ${finding.message}"
+                when (finding.severity) {
+                    ApkPreflight.Severity.ERROR -> args.logger.error(message)
+                    ApkPreflight.Severity.WARNING -> args.logger.warn(message)
+                    ApkPreflight.Severity.INFO -> args.logger.info(message)
+                }
+            }
+            check(unsignedPreflight.canPatch) {
+                "Patched APK failed structural postflight; output was not exported"
+            }
+            args.selectedAbi?.let { requestedAbi ->
+                val outputAbis = unsignedPreflight.abis
+                check(requestedAbi in outputAbis) {
+                    "Patched APK does not contain selected ABI $requestedAbi; output ABIs=${outputAbis.joinToString(",")}"
+                }
+                args.logger.info("[Postflight] Selected ABI verified: $requestedAbi")
             }
 
             updatePatcherNotification(stepName = signingApkLabel, patchProgress = null)
-            keystoreManager.sign(patchedApk, File(args.output))
+            val finalOutput = File(args.output)
+            TransactionalApkOutput.recover(finalOutput)
+            val transactionalOutput = TransactionalApkOutput.pending(finalOutput)
+            try {
+                keystoreManager.sign(patchedApk, transactionalOutput)
+
+                // Signing normally preserves entry offsets, but its malformed-ZIP fallback
+                // repackages the archive. Verify the artifact that will actually be committed.
+                NativeLibraryAlignment.requireAligned(transactionalOutput)
+
+                val signedPreflight = ApkPreflight.inspect(transactionalOutput)
+                check(signedPreflight.canPatch) {
+                    "Signed APK failed structural postflight; final output was not replaced"
+                }
+                check(pm.getPackageInfo(transactionalOutput) != null) {
+                    "Signed APK package metadata is unreadable; final output was not replaced"
+                }
+
+                if (finalOutput.exists()) {
+                    val backup = TransactionalApkOutput.previous(finalOutput)
+                    backup.delete()
+                    check(finalOutput.renameTo(backup)) {
+                        "Could not preserve previous output before transactional commit"
+                    }
+                    try {
+                        if (!transactionalOutput.renameTo(finalOutput)) {
+                            transactionalOutput.copyTo(finalOutput, overwrite = true)
+                            transactionalOutput.delete()
+                        }
+                        backup.delete()
+                    } catch (error: Throwable) {
+                        finalOutput.delete()
+                        backup.renameTo(finalOutput)
+                        throw error
+                    }
+                } else if (!transactionalOutput.renameTo(finalOutput)) {
+                    transactionalOutput.copyTo(finalOutput, overwrite = true)
+                    transactionalOutput.delete()
+                }
+
+                val reportChanges = buildList {
+                    add("Selected patches applied: $selectedCount")
+                    if (stripNativeLibs) {
+                        add(
+                            args.selectedAbi?.let { "Native libraries restricted to ABI $it" }
+                                ?: "Unused native ABIs stripped for this device"
+                        )
+                    }
+                    add("Native library alignment verified at 16 KiB")
+                    add("APK signed and structurally verified")
+                }
+                val report = PatchRunReport(
+                    packageName = args.packageName,
+                    version = args.input.version,
+                    inputSha256 = if (!inputIsSplitArchive) ApkPreflight.inspect(inputFile).sha256 else null,
+                    outputSha256 = ApkPreflight.inspect(finalOutput).sha256,
+                    inputSize = inputFile.length(),
+                    outputSize = finalOutput.length(),
+                    abis = unsignedPreflight.abis,
+                    selectedPatches = args.selectedPatches.values.flatten().sorted(),
+                    changes = reportChanges,
+                    warnings = unsignedPreflight.findings
+                        .filter { it.severity == ApkPreflight.Severity.WARNING }
+                        .map { "${it.code}: ${it.message}" },
+                    succeeded = true,
+                )
+                runCatching {
+                    report.writeTo(
+                        finalOutput.parentFile ?: fs.tempDir,
+                        "${finalOutput.nameWithoutExtension}-patch-report"
+                    )
+                }.onFailure { error ->
+                    args.logger.warn(
+                        "Patched APK was committed successfully, but the diagnostic report could not be written: " +
+                            (error.message ?: error::class.java.simpleName)
+                    )
+                }
+            } finally {
+                transactionalOutput.delete()
+            }
             updateProgress(state = State.COMPLETED) // Signing
 
             val elapsed = System.currentTimeMillis() - startTime
@@ -540,6 +695,11 @@ class PatcherWorker(
                 workDataOf(PROCESS_FAILURE_MESSAGE_KEY to e.stackTraceToString())
             )
         } finally {
+            preparedRuntimeInput?.let { preparedInput ->
+                if (!preparedInput.delete() && preparedInput.exists()) {
+                    Log.w(tag, "Failed to delete temporary ABI-prepared APK: ${preparedInput.absolutePath}".logFmt())
+                }
+            }
             if (!patchedApk.delete() && patchedApk.exists()) {
                 Log.w(tag, "Failed to delete temporary patched APK: ${patchedApk.absolutePath}".logFmt())
             }

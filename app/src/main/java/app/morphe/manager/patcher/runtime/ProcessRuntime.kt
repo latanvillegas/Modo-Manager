@@ -187,6 +187,7 @@ class ProcessRuntime(
         onPatchCompleted: suspend (String) -> Unit,
         onProgress: ProgressEventHandler,
         skipUnneededSplits: Boolean,
+        selectedAbi: String?,
         onMergedApkReady: (suspend (File) -> Unit)?,
         onRestart: suspend () -> Unit
     ) = coroutineScope {
@@ -203,6 +204,7 @@ class ProcessRuntime(
                     selectedPatches,
                     options,
                     skipUnneededSplits,
+                    selectedAbi,
                     logger,
                     onPatchCompleted,
                     onProgress,
@@ -259,6 +261,7 @@ class ProcessRuntime(
         selectedPatches: PatchSelection,
         options: Options,
         skipUnneededSplits: Boolean,
+        selectedAbi: String?,
         logger: Logger,
         onPatchCompleted: suspend (String) -> Unit,
         onProgress: ProgressEventHandler,
@@ -407,6 +410,7 @@ class ProcessRuntime(
                     )
                 },
                 skipUnneededSplits = skipUnneededSplits,
+                selectedAbi = selectedAbi,
                 mergedInputFile = mergedInputPath
             )
 

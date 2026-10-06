@@ -632,7 +632,8 @@ private fun MorpheManager(vm: MainViewModel) {
                                     selectedApp = params.selectedApp,
                                     selectedPatches = params.patches,
                                     options = params.options,
-                                    targetPackageName = params.targetPackageName
+                                    targetPackageName = params.targetPackageName,
+                                    selectedAbi = params.selectedAbi
                                 )
                             )
                         }

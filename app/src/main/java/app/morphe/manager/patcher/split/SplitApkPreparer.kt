@@ -66,6 +66,7 @@ object SplitApkPreparer {
         workspace: File,
         logger: Logger = DefaultLogger,
         skipUnneededSplits: Boolean = false,
+        selectedAbi: String? = null,
         onEvent: ((SplitPreparationEvent) -> Unit)? = null,
         sortMergedApkEntries: Boolean = false
     ): PreparationResult {
@@ -85,7 +86,7 @@ object SplitApkPreparer {
             logger.info("Found ${entries.size} split modules: ${entries.joinToString { it.name }}")
             logger.info("Module sizes: ${entries.joinToString { "${it.name}=${it.file.length()} bytes" }}")
             val mergeOrder = Merger.listMergeOrder(modulesDir.toPath())
-            val supportedTokens = supportedAbiTokens()
+            val supportedTokens = selectedAbi?.let(Abi::tokensOf) ?: supportedAbiTokens()
             val skippedModules = buildSet {
                 if (skipUnneededSplits) {
                     addAll(mergeOrder.filter { shouldSkipModule(it, supportedTokens) })
