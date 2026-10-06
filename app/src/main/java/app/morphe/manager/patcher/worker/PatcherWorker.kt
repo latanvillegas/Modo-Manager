@@ -334,6 +334,10 @@ class PatcherWorker(
 
         return try {
             val startTime = System.currentTimeMillis()
+            val phaseStartNanos = System.nanoTime()
+            var preparationDurationMs = 0L
+            var patchingDurationMs = 0L
+            var verificationSigningCommitDurationMs = 0L
 
             if (args.input is SelectedApp.Installed) {
                 installedAppRepository.get(args.packageName)?.let {
@@ -544,6 +548,8 @@ class PatcherWorker(
                 args.setInputFile(savedFile ?: mergedFile, true, true)
             }
 
+            preparationDurationMs = (System.nanoTime() - phaseStartNanos) / 1_000_000
+            val patchingStartNanos = System.nanoTime()
             try {
                 runtime.execute(
                     inputFile = runtimeInputFile.absolutePath,
@@ -593,6 +599,8 @@ class PatcherWorker(
                     onRestart = onRestart,
                 )
             }
+            patchingDurationMs = (System.nanoTime() - patchingStartNanos) / 1_000_000
+            val verificationStartNanos = System.nanoTime()
 
             // Patcher output is 16 KiB aligned, but any post-patch ZIP rewrite can move STORED
             // native libraries. Never sign/export an APK that Android cannot mmap safely.
@@ -652,6 +660,8 @@ class PatcherWorker(
                 )
 
                 TransactionalApkOutput.commit(finalOutput, transactionalOutput)
+                verificationSigningCommitDurationMs =
+                    (System.nanoTime() - verificationStartNanos) / 1_000_000
 
                 val reportChanges = buildList {
                     add("Selected patches applied: $selectedCount")
@@ -693,6 +703,11 @@ class PatcherWorker(
                     }.sorted(),
                     signingCertificateSha256 = archiveCertificateHashes.sorted(),
                     durationMs = System.currentTimeMillis() - startTime,
+                    phaseDurationsMs = mapOf(
+                        "preparation" to preparationDurationMs,
+                        "patching" to patchingDurationMs,
+                        "verification_signing_commit" to verificationSigningCommitDurationMs,
+                    ),
                 )
                 runCatching {
                     report.writeTo(
