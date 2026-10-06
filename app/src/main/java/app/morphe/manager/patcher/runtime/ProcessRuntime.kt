@@ -212,6 +212,11 @@ class ProcessRuntime(
                 )
 
                 return@coroutineScope
+            } catch (e: CancellationException) {
+                // Cancellation is a terminal control signal, never a memory retry. Child
+                // coroutines are cancelled by structured concurrency and executeWithMemory's
+                // finally asks an already-connected app_process to exit.
+                throw e
             } catch (e: Exception) {
                 val nextMemoryMB = lowerMemoryLimit(memoryMB)
                 val retry = e.isReclaimableMemoryFailure() &&
