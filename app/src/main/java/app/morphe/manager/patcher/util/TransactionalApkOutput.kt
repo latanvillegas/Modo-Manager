@@ -25,7 +25,7 @@ object TransactionalApkOutput {
             }
             check(previous.renameTo(finalOutput) || runCatching {
                 previous.copyTo(finalOutput, overwrite = false)
-                previous.delete()
+                check(previous.delete()) { "Could not remove previous patched APK after recovery copy" }
                 true
             }.getOrDefault(false)) {
                 "Could not restore previous patched APK"
@@ -66,16 +66,29 @@ object TransactionalApkOutput {
             }
             deleteIfExists(backup, "previous patched APK after successful commit")
         } catch (error: Throwable) {
-            finalOutput.delete()
+            if (finalOutput.exists() && !finalOutput.delete()) {
+                error.addSuppressed(
+                    IllegalStateException("Could not remove failed patched APK before rollback: ${finalOutput.path}")
+                )
+            }
             if (backup.exists()) {
-                val restored = backup.renameTo(finalOutput) || runCatching {
-                    backup.copyTo(finalOutput, overwrite = true)
-                    backup.delete()
-                    true
-                }.getOrDefault(false)
-                if (!restored) {
+                val rollbackFailure = runCatching {
+                    if (!backup.renameTo(finalOutput)) {
+                        backup.copyTo(finalOutput, overwrite = true)
+                        check(backup.delete()) {
+                            "Could not remove previous patched APK after rollback copy"
+                        }
+                    }
+                    check(finalOutput.isFile && finalOutput.length() > 0L) {
+                        "Restored patched APK is missing or empty after failed commit"
+                    }
+                }.exceptionOrNull()
+                if (rollbackFailure != null) {
                     error.addSuppressed(
-                        IllegalStateException("Could not restore previous patched APK after failed commit")
+                        IllegalStateException(
+                            "Could not restore previous patched APK after failed commit",
+                            rollbackFailure,
+                        )
                     )
                 }
             }
