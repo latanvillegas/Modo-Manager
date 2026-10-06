@@ -19,13 +19,21 @@ class JulHandlerScopeTest {
         override fun close() = Unit
     }
 
+    private fun isolatedLogger(suffix: String) =
+        java.util.logging.Logger.getLogger("JulHandlerScopeTest.$suffix").apply {
+            useParentHandlers = false
+            handlers.forEach(::removeHandler)
+        }
+
     @Test
     fun `previous root handlers are restored after success`() = runBlocking {
-        val root = java.util.logging.Logger.getLogger("")
+        val root = isolatedLogger("success")
+        val previousHandler = NoOpHandler()
+        root.addHandler(previousHandler)
         val previous = root.handlers.toList()
         val session = NoOpHandler()
 
-        JulHandlerScope.withHandler(session) {
+        JulHandlerScope.withHandler(session, root) {
             assertTrue(root.handlers.any { it === session })
             assertTrue(previous.none { old -> root.handlers.any { it === old } })
         }
@@ -36,12 +44,14 @@ class JulHandlerScopeTest {
 
     @Test
     fun `previous root handlers are restored after failure`() = runBlocking {
-        val root = java.util.logging.Logger.getLogger("")
+        val root = isolatedLogger("failure")
+        val previousHandler = NoOpHandler()
+        root.addHandler(previousHandler)
         val previous = root.handlers.toList()
         val session = NoOpHandler()
 
         assertFailsWith<IllegalStateException> {
-            JulHandlerScope.withHandler(session) {
+            JulHandlerScope.withHandler(session, root) {
                 error("patcher failed")
             }
         }
@@ -56,8 +66,10 @@ class JulHandlerScopeTest {
         val maximum = AtomicInteger(0)
         val firstEntered = CompletableDeferred<Unit>()
 
+        val root = isolatedLogger("concurrent")
+
         suspend fun enter(handler: Handler, signal: Boolean = false) {
-            JulHandlerScope.withHandler(handler) {
+            JulHandlerScope.withHandler(handler, root) {
                 val now = active.incrementAndGet()
                 maximum.updateAndGet { old -> maxOf(old, now) }
                 if (signal) firstEntered.complete(Unit)
