@@ -295,7 +295,11 @@ class ProcessRuntime(
         // Determine merged APK path before launching the process so it is accessible
         // after patching.await() to invoke onMergedApkReady in the coroutineScope.
         val mergedInputPath = if (SplitApkPreparer.isSplitArchive(File(inputFile))) {
-            File(cacheDir).resolve("merged-process-input-${System.currentTimeMillis()}.apk").absolutePath
+            File.createTempFile("merged-process-input-", ".apk", File(cacheDir)).apply {
+                // PatcherProcess owns writing this path; leaving the placeholder would make a
+                // cancelled pre-connect attempt look like a merged APK to later cleanup/recovery.
+                check(delete()) { "Could not prepare unique merged-process output path" }
+            }.absolutePath
         } else {
             null
         }
