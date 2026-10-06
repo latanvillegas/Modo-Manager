@@ -182,6 +182,7 @@ class ProcessRuntime(
         outputFile: String,
         packageName: String,
         selectedPatches: PatchSelection,
+        declaredPatchNames: Map<Int, Map<String, String>>,
         options: Options,
         logger: Logger,
         onPatchCompleted: suspend (String) -> Unit,
@@ -202,6 +203,7 @@ class ProcessRuntime(
                     outputFile,
                     packageName,
                     selectedPatches,
+                    declaredPatchNames,
                     options,
                     skipUnneededSplits,
                     selectedAbi,
@@ -264,6 +266,7 @@ class ProcessRuntime(
         outputFile: String,
         packageName: String,
         selectedPatches: PatchSelection,
+        declaredPatchNames: Map<Int, Map<String, String>>,
         options: Options,
         skipUnneededSplits: Boolean,
         selectedAbi: String?,
@@ -413,9 +416,10 @@ class ProcessRuntime(
                 outputFile = outputFile,
                 configurations = bundles().map { (uid, bundle) ->
                     PatchConfiguration(
-                        bundle,
-                        selectedPatches[uid].orEmpty(),
-                        options[uid].orEmpty()
+                        bundle = bundle,
+                        patches = selectedPatches[uid].orEmpty(),
+                        declaredPatchNames = declaredPatchNames[uid].orEmpty(),
+                        options = options[uid].orEmpty()
                     )
                 },
                 skipUnneededSplits = skipUnneededSplits,
