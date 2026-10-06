@@ -10,6 +10,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class OriginalApkStagingTest {
@@ -21,6 +22,19 @@ class OriginalApkStagingTest {
     @AfterTest
     fun cleanUp() {
         dir.deleteRecursively()
+    }
+
+    @Test
+    fun `failed staging cleanup preserves primary error and reports residue`() {
+        val staging = dir.resolve("failed.apk$STAGING_SUFFIX").apply { writeText("partial") }
+        val primary = IllegalStateException("primary failure")
+
+        cleanupStagingAfterFailure(staging, primary) { false }
+
+        assertTrue(staging.exists())
+        assertEquals(1, primary.suppressed.size)
+        assertTrue(primary.suppressed.single().message.orEmpty().contains(staging.path))
+        assertSame(primary, primary)
     }
 
     @Test
