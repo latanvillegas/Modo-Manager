@@ -14,7 +14,8 @@ import kotlin.test.assertFailsWith
 
 class NativePayloadApplierTest {
     @Test
-    fun `conflicting selected targets fail before APK mutation`() = runBlocking {
+    fun `conflicting selected targets fail before APK mutation`() {
+        runBlocking {
         val first = bundle("one")
         val second = bundle("two")
         val apk = File.createTempFile("native-payload-target-", ".apk")
@@ -37,6 +38,7 @@ class NativePayloadApplierTest {
             second.patchesJar.let(::File).delete()
             apk.delete()
             workspace.deleteRecursively()
+        }
         }
     }
 
