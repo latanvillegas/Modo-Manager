@@ -658,7 +658,7 @@ class BatchPatcherViewModel : ViewModel(), KoinComponent, ApkDownloadHelperHost 
             if (cursor.moveToFirst() && index != -1) cursor.getString(index) else null
         }
         val extension = displayName?.substringAfterLast('.', "apk")?.lowercase() ?: "apk"
-        val target = fs.uiTempDir.resolve("batch_input_${System.currentTimeMillis()}.$extension")
+        val target = File.createTempFile("batch_input_", ".$extension", fs.uiTempDir)
 
         val copied = app.contentResolver.openInputStream(uri)?.use { input ->
             target.outputStream().use { output -> input.copyTo(output) }
