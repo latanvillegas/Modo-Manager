@@ -23,7 +23,7 @@ internal typealias PatchList = List<Patch<*>>
 
 internal fun cleanupAfterConstructionFailure(
     error: Throwable,
-    vararg directories: File,
+    directories: List<File>,
     deleteRecursively: (File) -> Boolean = File::deleteRecursively,
 ) {
     directories.forEach { directory ->
@@ -70,7 +70,7 @@ class Session(
     } catch (error: Throwable) {
         // A constructor failure means the caller never receives a Session and therefore cannot
         // invoke close(); reclaim the scratch allocated above before propagating the real cause.
-        cleanupAfterConstructionFailure(error, tempDir, fileWorkspace)
+        cleanupAfterConstructionFailure(error, listOf(tempDir, fileWorkspace))
         throw error
     }
 
