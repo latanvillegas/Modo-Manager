@@ -43,6 +43,41 @@ class TransactionalApkOutputTest {
     }
 
     @Test
+    fun `recovery discards empty previous backup instead of publishing it`() {
+        val dir = createTempDir(prefix = "morphe-transaction-")
+        val output = File(dir, "patched.apk")
+        val previous = TransactionalApkOutput.previous(output)
+        try {
+            previous.createNewFile()
+
+            TransactionalApkOutput.recover(output)
+
+            assertFalse(output.exists())
+            assertFalse(previous.exists())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `recovery with truncated final and empty previous leaves no published APK`() {
+        val dir = createTempDir(prefix = "morphe-transaction-")
+        val output = File(dir, "patched.apk")
+        val previous = TransactionalApkOutput.previous(output)
+        try {
+            output.createNewFile()
+            previous.createNewFile()
+
+            TransactionalApkOutput.recover(output)
+
+            assertFalse(output.exists())
+            assertFalse(previous.exists())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `keeps final output and removes stale transaction files`() {
         val dir = createTempDir(prefix = "morphe-transaction-")
         val output = File(dir, "patched.apk")
