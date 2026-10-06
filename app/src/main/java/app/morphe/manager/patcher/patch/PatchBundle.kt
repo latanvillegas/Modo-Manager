@@ -166,6 +166,18 @@ data class PatchBundle(val patchesJar: String) : Parcelable {
         return payloads
     }
 
+    /** Total uncompressed bytes of selected payload entries, for storage preflight. */
+    fun nativePayloadBytes(payloads: Collection<NativePayload>): Long = JarFile(patchesJar).use { jar ->
+        payloads.fold(0L) { total, payload ->
+            val entry = jar.getJarEntry(payload.payloadEntry)
+                ?: error("Bundle is missing native payload ${payload.payloadEntry}")
+            require(!entry.isDirectory && entry.size >= 0L) {
+                "Native payload has unknown or invalid size: ${payload.payloadEntry}"
+            }
+            Math.addExact(total, entry.size)
+        }
+    }
+
     /**
      * Extracts one declared payload after verifying its bytes. Paths are never trusted as
      * filesystem paths; the payload is read only as a JAR entry and copied to [directory].
