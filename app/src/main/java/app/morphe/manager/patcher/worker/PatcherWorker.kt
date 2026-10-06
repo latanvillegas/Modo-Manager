@@ -38,6 +38,7 @@ import app.morphe.manager.patcher.runtime.heapLimitMebibytes
 import app.morphe.manager.patcher.split.SplitApkPreparer
 import app.morphe.manager.patcher.util.NativeLibStripper
 import app.morphe.manager.patcher.util.ApkPreflight
+import app.morphe.manager.patcher.util.PatchRunReport
 import app.morphe.manager.ui.model.SelectedApp
 import app.morphe.manager.ui.model.State
 import app.morphe.manager.util.*
@@ -498,8 +499,76 @@ class PatcherWorker(
                 NativeLibStripper.strip(patchedApk, args.logger)
             }
 
+            // Validate the patcher's unsigned output before signing or exporting it.
+            val unsignedPreflight = ApkPreflight.inspect(patchedApk)
+            unsignedPreflight.findings.forEach { finding ->
+                val message = "[Postflight] ${finding.code}: ${finding.message}"
+                when (finding.severity) {
+                    ApkPreflight.Severity.ERROR -> args.logger.error(message)
+                    ApkPreflight.Severity.WARNING -> args.logger.warn(message)
+                    ApkPreflight.Severity.INFO -> args.logger.info(message)
+                }
+            }
+            check(unsignedPreflight.canPatch) {
+                "Patched APK failed structural postflight; output was not exported"
+            }
+
             updatePatcherNotification(stepName = signingApkLabel, patchProgress = null)
-            keystoreManager.sign(patchedApk, File(args.output))
+            val finalOutput = File(args.output)
+            val transactionalOutput = File(finalOutput.parentFile, "${finalOutput.name}.pending")
+            transactionalOutput.delete()
+            try {
+                keystoreManager.sign(patchedApk, transactionalOutput)
+
+                val signedPreflight = ApkPreflight.inspect(transactionalOutput)
+                check(signedPreflight.canPatch) {
+                    "Signed APK failed structural postflight; final output was not replaced"
+                }
+                check(pm.getPackageInfo(transactionalOutput) != null) {
+                    "Signed APK package metadata is unreadable; final output was not replaced"
+                }
+
+                if (finalOutput.exists()) {
+                    val backup = File(finalOutput.parentFile, "${finalOutput.name}.previous")
+                    backup.delete()
+                    check(finalOutput.renameTo(backup)) {
+                        "Could not preserve previous output before transactional commit"
+                    }
+                    try {
+                        if (!transactionalOutput.renameTo(finalOutput)) {
+                            transactionalOutput.copyTo(finalOutput, overwrite = true)
+                            transactionalOutput.delete()
+                        }
+                        backup.delete()
+                    } catch (error: Throwable) {
+                        finalOutput.delete()
+                        backup.renameTo(finalOutput)
+                        throw error
+                    }
+                } else if (!transactionalOutput.renameTo(finalOutput)) {
+                    transactionalOutput.copyTo(finalOutput, overwrite = true)
+                    transactionalOutput.delete()
+                }
+
+                val report = PatchRunReport(
+                    packageName = args.packageName,
+                    version = args.input.version,
+                    inputSha256 = if (!inputIsSplitArchive) ApkPreflight.inspect(inputFile).sha256 else "",
+                    outputSha256 = ApkPreflight.inspect(finalOutput).sha256,
+                    inputSize = inputFile.length(),
+                    outputSize = finalOutput.length(),
+                    abis = unsignedPreflight.abis,
+                    selectedPatches = args.selectedPatches.values.flatten().sorted(),
+                    changes = listOf("DEX/resources patched", "APK signed and structurally verified"),
+                    warnings = unsignedPreflight.findings
+                        .filter { it.severity == ApkPreflight.Severity.WARNING }
+                        .map { "${it.code}: ${it.message}" },
+                    succeeded = true,
+                )
+                report.writeTo(finalOutput.parentFile ?: fs.tempDir, "${finalOutput.nameWithoutExtension}-patch-report")
+            } finally {
+                transactionalOutput.delete()
+            }
             updateProgress(state = State.COMPLETED) // Signing
 
             val elapsed = System.currentTimeMillis() - startTime
