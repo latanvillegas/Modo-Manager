@@ -19,6 +19,7 @@ import app.morphe.manager.patcher.runtime.ResourceMonitor
 import app.morphe.manager.patcher.runtime.heapLimitMebibytes
 import app.morphe.manager.patcher.split.SplitApkPreparer
 import app.morphe.manager.patcher.split.SplitPreparationEvent
+import app.morphe.manager.patcher.util.NativePayloadApplier
 import app.morphe.manager.ui.model.State
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -98,10 +99,18 @@ class PatcherProcess(private val context: Context) : IPatcherProcess.Stub() {
 
             try {
                 if (preparation.merged) {
+                    NativePayloadApplier.apply(
+                        apkFile = preparation.file,
+                        selections = parameters.configurations.map { config ->
+                            NativePayloadApplier.Selection(config.bundle, config.patches)
+                        },
+                        workspace = preparation.file.parentFile ?: File(parameters.cacheDir),
+                        logger = logger,
+                    )
                     events.progress(null, State.COMPLETED.name, null)
 
-                    // Copy merged APK to the agreed path so ProcessRuntime can read it back
-                    // in the main process after this process finishes
+                    // Persist the exact prepared input that Session receives. This keeps saved
+                    // merged APKs deterministic across CoroutineRuntime and ProcessRuntime.
                     parameters.mergedInputFile?.let { dest ->
                         preparation.file.copyTo(File(dest), overwrite = true)
                     }
