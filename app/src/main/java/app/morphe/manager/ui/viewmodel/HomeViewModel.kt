@@ -3574,10 +3574,10 @@ class HomeViewModel(
             val fileName = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                 val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                 if (cursor.moveToFirst() && nameIndex != -1) cursor.getString(nameIndex) else null
-            } ?: "temp_${System.currentTimeMillis()}"
+            } ?: "selected.apk"
 
             val extension = fileName.substringAfterLast('.', "apk").lowercase()
-            val tempFile = filesystem.uiTempDir.resolve("temp_apk_${System.currentTimeMillis()}.$extension")
+            val tempFile = File.createTempFile("temp_apk_", ".$extension", filesystem.uiTempDir)
 
             // openInputStream can return null when the provider is unavailable
             // e.g. Samsung External Storage restricted by Battery Optimization
