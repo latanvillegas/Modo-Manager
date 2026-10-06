@@ -436,6 +436,20 @@ class PatcherWorker(
 
             val options = args.options.restrictTo(args.selectedPatches)
 
+            // For a regular APK, strip a temporary input copy before patching. The patcher then
+            // writes and 16 KiB-aligns the final APK itself. Rewriting patchedApk afterwards would
+            // move STORED .so entries and undo that alignment.
+            val runtimeInputFile = if (stripNativeLibs && !inputIsSplitArchive) {
+                val preparedInput = fs.tempDir.resolve("abi-prepared-input.apk")
+                inputFile.copyTo(preparedInput, overwrite = true)
+                val outputAbis = args.selectedAbi?.let(::listOf)
+                    ?: Build.SUPPORTED_ABIS.filter { it.isNotBlank() }
+                NativeLibStripper.strip(preparedInput, outputAbis, args.logger)
+                preparedInput
+            } else {
+                inputFile
+            }
+
             // After merging a split archive (in either runtime), save the resulting mono-APK
             // directly to originalApksDir so it is used for repatching instead of the archive
             val onMergedApkReady: suspend (File) -> Unit = { mergedFile ->
@@ -453,7 +467,7 @@ class PatcherWorker(
 
             try {
                 runtime.execute(
-                    inputFile.absolutePath,
+                    runtimeInputFile.absolutePath,
                     patchedApk.absolutePath,
                     args.packageName,
                     args.selectedPatches,
@@ -484,7 +498,7 @@ class PatcherWorker(
                 args.logger.logCoroutineHeap()
 
                 CoroutineRuntime(applicationContext).execute(
-                    inputFile.absolutePath,
+                    runtimeInputFile.absolutePath,
                     patchedApk.absolutePath,
                     args.packageName,
                     args.selectedPatches,
@@ -497,14 +511,6 @@ class PatcherWorker(
                     onMergedApkReady,
                     onRestart
                 )
-            }
-
-            if (stripNativeLibs && !inputIsSplitArchive) {
-                // An explicit output ABI is authoritative. Do not re-resolve against the
-                // current device here or a manually selected ABI could be stripped back out.
-                val outputAbis = args.selectedAbi?.let(::listOf)
-                    ?: Build.SUPPORTED_ABIS.filter { it.isNotBlank() }
-                NativeLibStripper.strip(patchedApk, outputAbis, args.logger)
             }
 
             // Patcher output is 16 KiB aligned, but any post-patch ZIP rewrite can move STORED
@@ -652,6 +658,10 @@ class PatcherWorker(
                 workDataOf(PROCESS_FAILURE_MESSAGE_KEY to e.stackTraceToString())
             )
         } finally {
+            val preparedInput = fs.tempDir.resolve("abi-prepared-input.apk")
+            if (!preparedInput.delete() && preparedInput.exists()) {
+                Log.w(tag, "Failed to delete temporary ABI-prepared APK: ${preparedInput.absolutePath}".logFmt())
+            }
             if (!patchedApk.delete() && patchedApk.exists()) {
                 Log.w(tag, "Failed to delete temporary patched APK: ${patchedApk.absolutePath}".logFmt())
             }
