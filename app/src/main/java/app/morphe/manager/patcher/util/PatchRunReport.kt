@@ -34,7 +34,7 @@ data class PatchRunReport(
         append('{')
         append("\"packageName\":\"${json(packageName)}\",")
         append("\"version\":${version?.let { "\"${json(it)}\"" } ?: "null"},")
-        append("\"inputSha256\":${inputSha256?.let { "\\\"${json(it)}\\\"" } ?: "null"},")
+        append("\"inputSha256\":${inputSha256?.let { "\\"${json(it)}\\"" } ?: "null"},")
         append("\"outputSha256\":${outputSha256?.let { "\"${json(it)}\"" } ?: "null"},")
         append("\"inputSize\":$inputSize,")
         append("\"outputSize\":${outputSize ?: "null"},")
