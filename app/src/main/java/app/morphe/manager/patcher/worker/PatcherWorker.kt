@@ -39,6 +39,7 @@ import app.morphe.manager.patcher.split.SplitApkPreparer
 import app.morphe.manager.patcher.util.NativeLibStripper
 import app.morphe.manager.patcher.util.ApkPreflight
 import app.morphe.manager.patcher.util.PatchRunReport
+import app.morphe.manager.patcher.util.PatchStoragePreflight
 import app.morphe.manager.ui.model.SelectedApp
 import app.morphe.manager.ui.model.State
 import app.morphe.manager.util.*
@@ -340,6 +341,13 @@ class PatcherWorker(
 
             val inputIsSplitArchive = SplitApkPreparer.isSplitArchive(inputFile)
 
+            val initialDeviceStats = applicationContext.deviceStats()
+            PatchStoragePreflight.requireEnoughSpace(inputFile, initialDeviceStats?.storageAvailable)
+            args.logger.info(
+                "[Preflight] storage available=${initialDeviceStats?.storageAvailable ?: -1} " +
+                    "required=${PatchStoragePreflight.requiredBytes(inputFile.length())}"
+            )
+
             // Generic preflight: reject structurally invalid APKs before the patcher mutates anything.
             // Split archives are validated after SplitApkPreparer has produced the mono APK.
             if (!inputIsSplitArchive) {
@@ -372,7 +380,7 @@ class PatcherWorker(
             val selectedCount = args.selectedPatches.values.sumOf { it.size }
 
             // Log device environment for diagnostics
-            val deviceStats = applicationContext.deviceStats()
+            val deviceStats = initialDeviceStats
 
             // What this build of Morphe brings to the run. Every bug report needs the versions,
             // and native lib stripping silently changes what ends up in the output APK
