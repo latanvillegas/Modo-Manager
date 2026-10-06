@@ -309,7 +309,12 @@ class PatcherWorker(
             args.onPatchingRestarted()
         }
 
-        val patchedApk = fs.tempDir.resolve("patched.apk")
+        // Every worker owns a private workspace. Fixed filenames inside fs.tempDir allow two
+        // independent patch runs to overwrite each other's APKs.
+        val runWorkspace = fs.tempDir.resolve("patch-run-$id").also {
+            check(it.mkdirs() || it.isDirectory) { "Could not create isolated patch workspace" }
+        }
+        val patchedApk = runWorkspace.resolve("patched.apk")
         var preparedRuntimeInput: File? = null
         var succeeded = false
         var autoInstallPending = false
@@ -451,7 +456,7 @@ class PatcherWorker(
             // writes and 16 KiB-aligns the final APK itself. Rewriting patchedApk afterwards would
             // move STORED .so entries and undo that alignment.
             val runtimeInputFile = if (stripNativeLibs && !inputIsSplitArchive) {
-                val preparedInput = File.createTempFile("abi-prepared-", ".apk", fs.tempDir)
+                val preparedInput = File.createTempFile("abi-prepared-", ".apk", runWorkspace)
                 preparedRuntimeInput = preparedInput
                 inputFile.copyTo(preparedInput, overwrite = true)
                 val outputAbis = args.selectedAbi?.let(::listOf)
@@ -700,8 +705,8 @@ class PatcherWorker(
                     Log.w(tag, "Failed to delete temporary ABI-prepared APK: ${preparedInput.absolutePath}".logFmt())
                 }
             }
-            if (!patchedApk.delete() && patchedApk.exists()) {
-                Log.w(tag, "Failed to delete temporary patched APK: ${patchedApk.absolutePath}".logFmt())
+            if (!runWorkspace.deleteRecursively() && runWorkspace.exists()) {
+                Log.w(tag, "Failed to delete patch workspace: ${runWorkspace.absolutePath}".logFmt())
             }
             if (!isStopped && args.announceCompletion) showCompletionNotification(
                 succeeded,
