@@ -14,7 +14,13 @@ import java.io.File
 object NativePayloadApplier {
     data class Selection(
         val bundle: PatchBundle,
+        /** Selection keys as stored by Manager; these may be disambiguated per app. */
         val patchNames: Set<String>,
+        /**
+         * Names declared by the bundle for the selected patches. Native payload manifests bind
+         * to these names, never to Manager's disambiguated selection keys.
+         */
+        val declaredPatchNames: Set<String> = patchNames,
     )
 
     fun resolve(
@@ -22,7 +28,7 @@ object NativePayloadApplier {
         selectedAbi: String? = null,
     ): List<Pair<PatchBundle, PatchBundle.NativePayload>> {
         val selected = selections.flatMap { selection ->
-            selection.bundle.nativePayloadsFor(selection.patchNames)
+            selection.bundle.nativePayloadsFor(selection.declaredPatchNames)
                 .map { payload -> selection.bundle to payload }
         }
         val duplicateTargets = selected.groupBy { (_, payload) -> payload.apkEntry }
