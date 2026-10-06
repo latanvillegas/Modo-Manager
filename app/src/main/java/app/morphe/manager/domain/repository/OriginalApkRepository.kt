@@ -42,7 +42,13 @@ internal fun copyThroughStaging(source: File, target: File) {
             "Committed original APK size mismatch: expected $sourceSize, got ${target.length()}"
         }
     } catch (e: Exception) {
-        staging.delete()
+        if (!staging.delete() && staging.exists()) {
+            e.addSuppressed(
+                IllegalStateException(
+                    "Could not remove staged original APK after failed save: ${staging.path}"
+                )
+            )
+        }
         throw e
     }
 }
