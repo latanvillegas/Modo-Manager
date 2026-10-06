@@ -531,6 +531,7 @@ class PatcherViewModel(
 
     /** Patch sources collected during preflight, forwarded to the worker for logging. */
     private var patchSourcesForLog: List<PatchSourceRef> = emptyList()
+    private var declaredPatchNamesForRun: Map<Int, Map<String, String>> = emptyMap()
 
     /** True when the current patching step has been running for over a minute. */
     val showLongStepWarning: StateFlow<Boolean> = patchRun.showLongStepWarning
@@ -621,6 +622,10 @@ class PatcherViewModel(
             return false
         }
 
+        declaredPatchNamesForRun = sanitizedSelection.mapValues { (uid, selected) ->
+            val byKey = scopedBundles[uid]?.patches?.associate { it.name to it.displayName }.orEmpty()
+            selected.associateWith { key -> byKey[key] ?: key }
+        }
         patchSourcesForLog = collectSelectedBundleMetadata()
 
         // Check that all selected bundles are compatible with the patcher bundled in this
@@ -1002,6 +1007,7 @@ class PatcherViewModel(
             },
             onProgress = patchRun::onProgress,
             patchSources = patchSourcesForLog,
+            declaredPatchNames = declaredPatchNamesForRun,
             selectedAbi = input.selectedAbi,
         )
     }
