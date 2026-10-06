@@ -486,6 +486,10 @@ class BatchPatchCoordinator(
             },
             onProgress = runProgress::onProgress,
             patchSources = patchSources,
+            declaredPatchNames = item.selection.mapValues { (uid, selected) ->
+                val byKey = item.bundles.firstOrNull { it.uid == uid }?.declaredPatchNames.orEmpty()
+                selected.associateWith { key -> byKey[key] ?: key }
+            },
             announceCompletion = false,
             queuePosition = _state.value?.let { it.processed to it.total }
         )
