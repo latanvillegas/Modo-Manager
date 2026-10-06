@@ -3052,7 +3052,7 @@ class HomeViewModel(
 
         viewModelScope.launch {
             val abis = withContext(Dispatchers.IO) {
-                ApkArchitectureResolver.abisOf(selectedApp).distinct()
+                ApkArchitectureResolver.abisOf(selectedApp, pm).distinct()
             }
             if (abis.isEmpty()) {
                 onStartQuickPatch?.invoke(params)
