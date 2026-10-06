@@ -43,6 +43,11 @@ object TransactionalApkOutput {
     fun commit(finalOutput: File, pendingOutput: File) {
         require(pendingOutput.isFile) { "Pending patched APK does not exist" }
         require(pendingOutput.length() > 0L) { "Pending patched APK is empty" }
+        if (finalOutput.exists()) {
+            require(finalOutput.isFile && finalOutput.length() > 0L) {
+                "Existing patched APK output is not a valid regular file: ${finalOutput.path}"
+            }
+        }
         val backup = previous(finalOutput)
         deleteIfExists(backup, "stale previous patched APK")
 
