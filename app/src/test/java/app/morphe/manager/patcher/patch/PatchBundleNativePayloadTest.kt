@@ -159,6 +159,42 @@ class PatchBundleNativePayloadTest {
         }
     }
 
+
+    @Test
+    fun `future native manifest schema is rejected`() {
+        val jar = bundle(mapOf(
+            "META-INF/morphe/native-payloads.properties" to """
+                schemaVersion=2
+                capabilities=NATIVE
+            """.trimIndent().toByteArray()
+        ))
+        try {
+            assertFailsWith<IllegalArgumentException> {
+                PatchBundle(jar.absolutePath).nativePayloadManifest()
+            }
+        } finally {
+            jar.delete()
+        }
+    }
+
+    @Test
+    fun `unknown native manifest field is rejected`() {
+        val jar = bundle(mapOf(
+            "META-INF/morphe/native-payloads.properties" to """
+                schemaVersion=1
+                capabilities=NATIVE
+                payload.demo.futureField=value
+            """.trimIndent().toByteArray()
+        ))
+        try {
+            assertFailsWith<IllegalArgumentException> {
+                PatchBundle(jar.absolutePath).nativePayloadManifest()
+            }
+        } finally {
+            jar.delete()
+        }
+    }
+
     private fun bundle(entries: Map<String, ByteArray>): File =
         File.createTempFile("morphe-bundle-", ".jar").also { file ->
             JarOutputStream(file.outputStream()).use { jar ->
