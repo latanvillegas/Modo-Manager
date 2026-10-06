@@ -117,7 +117,13 @@ class PatcherProcess(private val context: Context) : IPatcherProcess.Stub() {
                     NativePayloadApplier.apply(
                         apkFile = preparation.file,
                         selections = parameters.configurations.map { config ->
-                            NativePayloadApplier.Selection(config.bundle, config.patches)
+                            NativePayloadApplier.Selection(
+                                bundle = config.bundle,
+                                patchNames = config.patches,
+                                declaredPatchNames = config.patches.mapTo(mutableSetOf()) { key ->
+                                    config.declaredPatchNames[key] ?: key
+                                },
+                            )
                         },
                         workspace = preparation.file.parentFile ?: File(parameters.cacheDir),
                         logger = logger,
