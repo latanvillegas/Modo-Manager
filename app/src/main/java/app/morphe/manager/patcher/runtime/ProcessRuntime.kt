@@ -203,6 +203,7 @@ class ProcessRuntime(
                     selectedPatches,
                     options,
                     skipUnneededSplits,
+                    selectedAbi,
                     logger,
                     onPatchCompleted,
                     onProgress,
@@ -259,6 +260,7 @@ class ProcessRuntime(
         selectedPatches: PatchSelection,
         options: Options,
         skipUnneededSplits: Boolean,
+        selectedAbi: String?,
         logger: Logger,
         onPatchCompleted: suspend (String) -> Unit,
         onProgress: ProgressEventHandler,
@@ -407,6 +409,7 @@ class ProcessRuntime(
                     )
                 },
                 skipUnneededSplits = skipUnneededSplits,
+                selectedAbi = selectedAbi,
                 mergedInputFile = mergedInputPath
             )
 
