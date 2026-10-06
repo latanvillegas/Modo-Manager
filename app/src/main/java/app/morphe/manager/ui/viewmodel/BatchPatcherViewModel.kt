@@ -652,25 +652,36 @@ class BatchPatcherViewModel : ViewModel(), KoinComponent, ApkDownloadHelperHost 
         true
     }
 
-    private fun copyToWorkspace(uri: Uri): File? = try {
-        val displayName = app.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+    private fun copyToWorkspace(uri: Uri): File? {
+        var target: File? = null
+        return try {
+            val displayName = app.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
             val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
             if (cursor.moveToFirst() && index != -1) cursor.getString(index) else null
         }
         val extension = displayName?.substringAfterLast('.', "apk")?.lowercase() ?: "apk"
-        val target = File.createTempFile("batch_input_", ".$extension", fs.uiTempDir)
+            target = File.createTempFile("batch_input_", ".$extension", fs.uiTempDir)
+            val outputFile = target
 
         val copied = app.contentResolver.openInputStream(uri)?.use { input ->
-            target.outputStream().use { output -> input.copyTo(output) }
+            outputFile.outputStream().use { output -> input.copyTo(output) }
         }
         if (copied == null || copied == 0L) {
-            target.delete()
+                if (!outputFile.delete() && outputFile.exists()) {
+                    Log.w(tag, "Failed to delete empty batch input: ${outputFile.absolutePath}")
+                }
+                null
+            } else {
+                outputFile
+            }
+        } catch (e: Exception) {
+            target?.let { failed ->
+                if (!failed.delete() && failed.exists()) {
+                    Log.w(tag, "Failed to delete batch input after copy error: ${failed.absolutePath}")
+                }
+            }
+            Log.e(tag, "Failed to copy attached APK", e)
             null
-        } else {
-            target
         }
-    } catch (e: Exception) {
-        Log.e(tag, "Failed to copy attached APK", e)
-        null
     }
 }
