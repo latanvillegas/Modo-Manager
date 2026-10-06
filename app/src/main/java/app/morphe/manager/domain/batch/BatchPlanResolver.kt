@@ -434,6 +434,7 @@ class BatchPlanResolver(
         name = name,
         version = version,
         patchNames = patches.mapTo(mutableSetOf()) { it.name },
+        declaredPatchNames = patches.associate { it.name to it.displayName },
         renamingPatchNames = patches
             .filter { it.declaresPackageName }
             .mapTo(mutableSetOf()) { it.name }
