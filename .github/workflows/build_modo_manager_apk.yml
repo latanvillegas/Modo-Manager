@@ -50,4 +50,4 @@ jobs:
           name: Modo-Manager-debug-apk
           path: dist/Modo-Manager-debug.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
