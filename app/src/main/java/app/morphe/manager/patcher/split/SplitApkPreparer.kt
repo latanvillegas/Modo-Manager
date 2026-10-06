@@ -74,8 +74,10 @@ object SplitApkPreparer {
             return PreparationResult(source, merged = false)
         }
 
-        workspace.mkdirs()
-        val workingDir = File(workspace, "split-${System.currentTimeMillis()}")
+        check(workspace.mkdirs() || workspace.isDirectory) {
+            "Could not create split workspace: ${workspace.path}"
+        }
+        val workingDir = Files.createTempDirectory(workspace.toPath(), "split-").toFile()
         val modulesDir = workingDir.resolve("modules").also { it.mkdirs() }
         val mergedApk = workingDir.resolve("${source.nameWithoutExtension}-merged.apk")
 
