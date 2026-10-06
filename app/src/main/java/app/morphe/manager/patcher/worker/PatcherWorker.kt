@@ -467,18 +467,18 @@ class PatcherWorker(
 
             try {
                 runtime.execute(
-                    runtimeInputFile.absolutePath,
-                    patchedApk.absolutePath,
-                    args.packageName,
-                    args.selectedPatches,
-                    options,
-                    args.logger,
-                    onPatchCompleted,
-                    ::updateProgress,
-                    stripNativeLibs,
-                    args.selectedAbi,
-                    onMergedApkReady,
-                    onRestart
+                    inputFile = runtimeInputFile.absolutePath,
+                    outputFile = patchedApk.absolutePath,
+                    packageName = args.packageName,
+                    selectedPatches = args.selectedPatches,
+                    options = options,
+                    logger = args.logger,
+                    onPatchCompleted = onPatchCompleted,
+                    onProgress = ::updateProgress,
+                    skipUnneededSplits = stripNativeLibs,
+                    selectedAbi = args.selectedAbi,
+                    onMergedApkReady = onMergedApkReady,
+                    onRestart = onRestart,
                 )
             } catch (e: Exception) {
                 val fallbackReason = when {
@@ -498,18 +498,18 @@ class PatcherWorker(
                 args.logger.logCoroutineHeap()
 
                 CoroutineRuntime(applicationContext).execute(
-                    runtimeInputFile.absolutePath,
-                    patchedApk.absolutePath,
-                    args.packageName,
-                    args.selectedPatches,
-                    options,
-                    args.logger,
-                    onPatchCompleted,
-                    ::updateProgress,
-                    stripNativeLibs,
-                    args.selectedAbi,
-                    onMergedApkReady,
-                    onRestart
+                    inputFile = runtimeInputFile.absolutePath,
+                    outputFile = patchedApk.absolutePath,
+                    packageName = args.packageName,
+                    selectedPatches = args.selectedPatches,
+                    options = options,
+                    logger = args.logger,
+                    onPatchCompleted = onPatchCompleted,
+                    onProgress = ::updateProgress,
+                    skipUnneededSplits = stripNativeLibs,
+                    selectedAbi = args.selectedAbi,
+                    onMergedApkReady = onMergedApkReady,
+                    onRestart = onRestart,
                 )
             }
 
