@@ -22,6 +22,7 @@ data class PatchRunReport(
     val nativePayloads: List<String> = emptyList(),
     val signingCertificateSha256: List<String> = emptyList(),
     val durationMs: Long? = null,
+    val phaseDurationsMs: Map<String, Long> = emptyMap(),
 ) {
     fun toText(): String = buildString {
         appendLine("package=$packageName")
@@ -36,6 +37,9 @@ data class PatchRunReport(
         appendLine("patcher_version=${patcherVersion ?: "?"}")
         appendLine("selected_abi=${selectedAbi ?: "auto"}")
         appendLine("duration_ms=${durationMs ?: -1}")
+        phaseDurationsMs.toSortedMap().forEach { (phase, millis) ->
+            appendLine("phase_ms.$phase=$millis")
+        }
         bundleSources.forEach { appendLine("bundle=$it") }
         nativePayloads.forEach { appendLine("native_payload=$it") }
         signingCertificateSha256.forEach { appendLine("signing_certificate_sha256=$it") }
@@ -63,6 +67,7 @@ data class PatchRunReport(
         append("\"nativePayloads\":${array(nativePayloads)},")
         append("\"signingCertificateSha256\":${array(signingCertificateSha256)},")
         append("\"durationMs\":${durationMs ?: "null"},")
+        append("\"phaseDurationsMs\":${longMap(phaseDurationsMs)},")
         append("\"succeeded\":$succeeded")
         append('}')
     }
@@ -76,6 +81,11 @@ data class PatchRunReport(
 
     private fun array(values: List<String>) =
         values.joinToString(prefix = "[", postfix = "]") { "\"${json(it)}\"" }
+
+    private fun longMap(values: Map<String, Long>) =
+        values.toSortedMap().entries.joinToString(prefix = "{", postfix = "}") { (key, value) ->
+            "\"${json(key)}\":$value"
+        }
 
     private fun json(value: String) = buildString {
         value.forEach { c ->
