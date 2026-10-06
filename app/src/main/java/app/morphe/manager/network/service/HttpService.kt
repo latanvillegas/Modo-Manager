@@ -649,7 +649,6 @@ internal fun isTransientNetworkError(t: Throwable): Boolean {
 /** Statuses that describe a momentary server-side condition rather than a settled answer. */
 private fun HttpStatusCode.isTransient() = value == 408 || value in 500..599
 
-
 internal fun openParallelDownloadTarget(target: File): FileChannel =
     FileChannel.open(
         target.toPath(),
