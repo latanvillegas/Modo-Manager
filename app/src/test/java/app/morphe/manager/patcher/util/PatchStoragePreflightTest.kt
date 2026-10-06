@@ -7,9 +7,21 @@ import kotlin.test.assertFailsWith
 
 class PatchStoragePreflightTest {
     @Test
-    fun `requires five APK copies plus fixed headroom`() {
+    fun `base workload reserves three APK copies plus fixed headroom`() {
         val mib = 1024L * 1024L
-        assertEquals(564L * mib, PatchStoragePreflight.requiredBytes(100L * mib))
+        assertEquals(364L * mib, PatchStoragePreflight.requiredBytes(100L * mib))
+    }
+
+    @Test
+    fun `split prepared input and native payloads increase required storage`() {
+        val mib = 1024L * 1024L
+        val workload = PatchStoragePreflight.Workload(
+            splitArchive = true,
+            preparedInput = true,
+            nativePayloadBytes = 10L * mib,
+        )
+        // Six APK-sized copies + twice the extracted payload bytes + 64 MiB headroom.
+        assertEquals(684L * mib, PatchStoragePreflight.requiredBytes(100L * mib, workload))
     }
 
     @Test
