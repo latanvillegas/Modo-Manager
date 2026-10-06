@@ -454,10 +454,18 @@ class PatcherWorker(
 
             // Native payloads are bundle data, never app-specific Manager rules. Resolve only
             // payloads bound to patches selected from that exact bundle.
-            val nativeSelections = args.selectedPatches.mapNotNull { (uid, patchNames) ->
-                patchBundleRepository.bundles.value[uid]?.let { bundle ->
-                    NativePayloadApplier.Selection(bundle, patchNames.toSet())
-                }
+            val availableBundles = patchBundleRepository.bundles.value
+            val missingBundleUids = args.selectedPatches.keys - availableBundles.keys
+            check(missingBundleUids.isEmpty()) {
+                "Selected patch bundles are no longer available: ${missingBundleUids.sorted().joinToString(",")}"
+            }
+            val nativeSelections = args.selectedPatches.map { (uid, patchNames) ->
+                NativePayloadApplier.Selection(
+                    bundle = checkNotNull(availableBundles[uid]) {
+                        "Selected patch bundle disappeared during resolution: $uid"
+                    },
+                    patchNames = patchNames.toSet(),
+                )
             }
             val nativePayloads = NativePayloadApplier.resolve(nativeSelections)
             val nativePayloadBytes = nativePayloads
