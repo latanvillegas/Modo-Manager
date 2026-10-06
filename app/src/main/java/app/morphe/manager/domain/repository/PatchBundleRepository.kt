@@ -1155,14 +1155,25 @@ class PatchBundleRepository(
                         withContext(Dispatchers.IO) {
                             runCatching {
                                 localBundle.patchesJarFile.setWritable(true, true)
+                            }.onFailure { cleanupError ->
+                                Log.w(tag, "Failed to make rejected patch bundle writable for cleanup", cleanupError)
                             }
-                            runCatching {
-                                localBundle.patchesJarFile.delete()
+                            if (
+                                localBundle.patchesJarFile.exists() &&
+                                !localBundle.patchesJarFile.delete() &&
+                                localBundle.patchesJarFile.exists()
+                            ) {
+                                Log.w(
+                                    tag,
+                                    "Failed to delete rejected patch bundle: ${localBundle.patchesJarFile.absolutePath}"
+                                )
                             }
                         }
                     }
                 } finally {
-                    tempFile.delete()
+                    if (tempFile.exists() && !tempFile.delete() && tempFile.exists()) {
+                        Log.w(tag, "Failed to delete temporary local bundle: ${tempFile.absolutePath}")
+                    }
                 }
                 setLocalImportProgress(
                     baseProcessed = baseProcessed,
