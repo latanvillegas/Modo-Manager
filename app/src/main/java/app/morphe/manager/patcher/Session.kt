@@ -10,6 +10,7 @@ import app.morphe.patcher.patch.PatchResult
 import app.morphe.manager.patcher.Session.Companion.component1
 import app.morphe.manager.patcher.Session.Companion.component2
 import app.morphe.manager.patcher.logger.Logger
+import app.morphe.manager.patcher.logger.JulHandlerScope
 import app.morphe.manager.ui.model.State
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -94,27 +95,20 @@ class Session(
     suspend fun run(output: File, selectedPatches: PatchList) {
         updateProgress(state = State.COMPLETED) // Unpacking
 
-        java.util.logging.Logger.getLogger("").apply {
-            handlers.forEach {
-                it.close()
-                removeHandler(it)
+        val result = JulHandlerScope.withHandler(logger.handler) {
+            with(patcher) {
+                this += selectedPatches.toSet()
+
+                logger.info("Applying patches...")
+                applyPatchesVerbose(selectedPatches.sortedBy { it.name })
             }
 
-            addHandler(logger.handler)
-        }
-
-        with(patcher) {
-            this += selectedPatches.toSet()
-
-            logger.info("Applying patches...")
-            applyPatchesVerbose(selectedPatches.sortedBy { it.name })
-        }
-
-        logger.info("Writing patched files...")
-        val result = withContext(Dispatchers.Default) {
-            // patcher.get() writes dex files, then encodes resources, so run on default pool
-            // instead of main thread.
-            patcher.get()
+            logger.info("Writing patched files...")
+            withContext(Dispatchers.Default) {
+                // patcher.get() writes dex files, then encodes resources, so run on default pool
+                // instead of main thread.
+                patcher.get()
+            }
         }
 
         val patched = tempDir.resolve("result.apk")
