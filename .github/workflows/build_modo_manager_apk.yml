@@ -30,11 +30,11 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
-      - name: Build debug APK
+      - name: Test and build debug APK
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           _JAVA_OPTIONS: -Djava.awt.headless=true
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug --stacktrace
 
       - name: Collect APK
         run: |
