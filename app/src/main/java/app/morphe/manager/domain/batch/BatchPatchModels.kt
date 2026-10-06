@@ -122,7 +122,7 @@ data class BatchBundleRef(
     val version: String?,
     val patchNames: Set<String>,
     /** Manager selection key -> name originally declared by the patch bundle. */
-    val declaredPatchNames: Map<String, String>,
+    val declaredPatchNames: Map<String, String> = emptyMap(),
     val renamingPatchNames: Set<String>
 )
 
