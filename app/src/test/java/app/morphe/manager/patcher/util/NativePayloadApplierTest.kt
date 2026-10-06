@@ -46,7 +46,7 @@ class NativePayloadApplierTest {
             capabilities=NATIVE
             payload.$id.patchName=Patch
             payload.$id.apkEntry=lib/arm64-v8a/libdemo.so
-            payload.$id.entry=native/$id.so
+            payload.$id.entry=payload/native/arm64-v8a/$id.so
             payload.$id.originalSha256=0000000000000000000000000000000000000000000000000000000000000000
             payload.$id.replacementSha256=1111111111111111111111111111111111111111111111111111111111111111
         """.trimIndent().toByteArray()
@@ -55,7 +55,7 @@ class NativePayloadApplierTest {
             jar.putNextEntry(JarEntry("META-INF/morphe/native-payloads.properties"))
             jar.write(properties)
             jar.closeEntry()
-            jar.putNextEntry(JarEntry("native/$id.so"))
+            jar.putNextEntry(JarEntry("payload/native/arm64-v8a/$id.so"))
             jar.write(byteArrayOf(9))
             jar.closeEntry()
         }
