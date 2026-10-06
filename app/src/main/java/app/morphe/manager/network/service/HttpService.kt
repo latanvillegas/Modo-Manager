@@ -222,13 +222,7 @@ class HttpService(
 
         // Always start from an empty file. CREATE alone preserves bytes from an older, longer
         // download, and FileChannel.truncate(totalSize) does not enlarge a shorter file.
-        FileChannel.open(
-            saveLocation.toPath(),
-            StandardOpenOption.CREATE,
-            StandardOpenOption.TRUNCATE_EXISTING,
-            StandardOpenOption.WRITE,
-            StandardOpenOption.READ
-        ).use { fileChannel ->
+        openParallelDownloadTarget(saveLocation).use { fileChannel ->
             fileChannel.truncate(totalSize)
 
             val totalRead = AtomicLong(0L)
@@ -654,3 +648,13 @@ internal fun isTransientNetworkError(t: Throwable): Boolean {
 
 /** Statuses that describe a momentary server-side condition rather than a settled answer. */
 private fun HttpStatusCode.isTransient() = value == 408 || value in 500..599
+
+
+internal fun openParallelDownloadTarget(target: File): FileChannel =
+    FileChannel.open(
+        target.toPath(),
+        StandardOpenOption.CREATE,
+        StandardOpenOption.TRUNCATE_EXISTING,
+        StandardOpenOption.WRITE,
+        StandardOpenOption.READ
+    )
