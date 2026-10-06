@@ -41,4 +41,35 @@ class TransactionalApkOutputTest {
             dir.deleteRecursively()
         }
     }
+    @Test
+    fun `commit replaces output and removes backup`() {
+        val dir = createTempDir(prefix = "morphe-transaction-")
+        val output = File(dir, "patched.apk")
+        val pending = TransactionalApkOutput.pending(output)
+        try {
+            output.writeText("old")
+            pending.writeText("new")
+            TransactionalApkOutput.commit(output, pending)
+            assertEquals("new", output.readText())
+            assertFalse(pending.exists())
+            assertFalse(TransactionalApkOutput.previous(output).exists())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `commit creates output when no previous artifact exists`() {
+        val dir = createTempDir(prefix = "morphe-transaction-")
+        val output = File(dir, "patched.apk")
+        val pending = TransactionalApkOutput.pending(output)
+        try {
+            pending.writeText("new")
+            TransactionalApkOutput.commit(output, pending)
+            assertEquals("new", output.readText())
+            assertFalse(pending.exists())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
 }
