@@ -422,8 +422,12 @@ class BatchPatchCoordinator(
         // Leftovers from a previous run are dropped here rather than when it finished, so its
         // patched APKs stayed installable for as long as the summary was on screen
         withContext(Dispatchers.IO) {
-            runCatching { workspace.deleteRecursively() }
-            workspace.mkdirs()
+            check(!workspace.exists() || workspace.deleteRecursively() || !workspace.exists()) {
+                "Could not clear stale batch workspace: ${workspace.absolutePath}"
+            }
+            check(workspace.mkdirs() || workspace.isDirectory) {
+                "Could not create batch workspace: ${workspace.absolutePath}"
+            }
         }
 
         while (true) {
@@ -591,7 +595,9 @@ class BatchPatchCoordinator(
 
     private fun cleanupInput(selectedApp: SelectedApp) {
         val local = selectedApp as? SelectedApp.Local ?: return
-        if (local.temporary) local.file.delete()
+        if (local.temporary && !local.file.delete() && local.file.exists()) {
+            Log.w(TAG, "Failed to delete temporary batch input: ${local.file.absolutePath}")
+        }
     }
 
     /**
