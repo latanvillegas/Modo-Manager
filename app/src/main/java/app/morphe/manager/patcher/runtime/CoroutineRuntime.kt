@@ -6,6 +6,7 @@ import app.morphe.manager.patcher.logger.Logger
 import app.morphe.manager.patcher.patch.PatchBundle
 import app.morphe.manager.patcher.patch.PatchSelectionValidator
 import app.morphe.manager.patcher.patch.applyPatchOptions
+import app.morphe.manager.patcher.patch.requirePatchOptionsAvailable
 import app.morphe.manager.patcher.split.SplitApkPreparer
 import app.morphe.manager.patcher.util.NativePayloadApplier
 import app.morphe.manager.patcher.worker.ProgressEventHandler
@@ -62,8 +63,9 @@ class CoroutineRuntime(private val context: Context) : Runtime(context) {
 
             // Set all patch options
             options.forEach { (bundle, bundlePatchOptions) ->
-                val patchesByName = allPatches[bundle] ?: return@forEach
-
+                val patchesByName = allPatches[bundle]
+                    ?: throw IllegalArgumentException("Options reference unavailable patch bundle $bundle")
+                patchesByName.requirePatchOptionsAvailable(bundlePatchOptions)
                 patchesByName.applyPatchOptions(bundlePatchOptions, logger)
             }
 
