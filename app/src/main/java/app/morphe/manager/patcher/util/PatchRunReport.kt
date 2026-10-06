@@ -15,6 +15,13 @@ data class PatchRunReport(
     val changes: List<String>,
     val warnings: List<String>,
     val succeeded: Boolean,
+    val managerVersion: String? = null,
+    val patcherVersion: String? = null,
+    val selectedAbi: String? = null,
+    val bundleSources: List<String> = emptyList(),
+    val nativePayloads: List<String> = emptyList(),
+    val signingCertificateSha256: List<String> = emptyList(),
+    val durationMs: Long? = null,
 ) {
     fun toText(): String = buildString {
         appendLine("package=$packageName")
@@ -25,6 +32,13 @@ data class PatchRunReport(
         appendLine("output_size=${outputSize ?: -1}")
         appendLine("abis=${abis.joinToString(",")}")
         appendLine("succeeded=$succeeded")
+        appendLine("manager_version=${managerVersion ?: "?"}")
+        appendLine("patcher_version=${patcherVersion ?: "?"}")
+        appendLine("selected_abi=${selectedAbi ?: "auto"}")
+        appendLine("duration_ms=${durationMs ?: -1}")
+        bundleSources.forEach { appendLine("bundle=$it") }
+        nativePayloads.forEach { appendLine("native_payload=$it") }
+        signingCertificateSha256.forEach { appendLine("signing_certificate_sha256=$it") }
         selectedPatches.forEach { appendLine("patch=$it") }
         changes.forEach { appendLine("change=$it") }
         warnings.forEach { appendLine("warning=$it") }
@@ -42,6 +56,13 @@ data class PatchRunReport(
         append("\"selectedPatches\":${array(selectedPatches)},")
         append("\"changes\":${array(changes)},")
         append("\"warnings\":${array(warnings)},")
+        append("\"managerVersion\":${managerVersion?.let { "\"\${json(it)}\"" } ?: "null"},")
+        append("\"patcherVersion\":${patcherVersion?.let { "\"\${json(it)}\"" } ?: "null"},")
+        append("\"selectedAbi\":${selectedAbi?.let { "\"\${json(it)}\"" } ?: "null"},")
+        append("\"bundleSources\":${array(bundleSources)},")
+        append("\"nativePayloads\":${array(nativePayloads)},")
+        append("\"signingCertificateSha256\":${array(signingCertificateSha256)},")
+        append("\"durationMs\":${durationMs ?: "null"},")
         append("\"succeeded\":$succeeded")
         append('}')
     }
