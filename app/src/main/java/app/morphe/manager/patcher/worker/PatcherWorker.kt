@@ -51,6 +51,7 @@ import app.morphe.manager.util.*
 import app.morphe.manager.util.PatchSelectionUtils.restrictTo
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
@@ -463,7 +464,7 @@ class PatcherWorker(
 
             // Native payloads are bundle data, never app-specific Manager rules. Resolve only
             // payloads bound to patches selected from that exact bundle.
-            val availableBundles = patchBundleRepository.bundles.value
+            val availableBundles = patchBundleRepository.bundles.first()
             val missingBundleUids = args.selectedPatches.keys - availableBundles.keys
             check(missingBundleUids.isEmpty()) {
                 "Selected patch bundles are no longer available: ${missingBundleUids.sorted().joinToString(",")}"
@@ -695,7 +696,7 @@ class PatcherWorker(
                     patcherVersion = BuildConfig.PATCHER_VERSION,
                     selectedAbi = args.selectedAbi,
                     bundleSources = args.selectedPatches.keys.sorted().mapNotNull { uid ->
-                        patchBundleRepository.bundles.value[uid]?.let { bundle ->
+                        availableBundles[uid]?.let { bundle ->
                             val attrs = bundle.manifestAttributes
                             "uid=$uid name=${attrs?.name ?: "?"} version=${attrs?.version ?: "?"} " +
                                 "sha256=${FileHash.sha256(File(bundle.patchesJar))}"
