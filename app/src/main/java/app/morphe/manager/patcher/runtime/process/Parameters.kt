@@ -24,5 +24,7 @@ data class Parameters(
 data class PatchConfiguration(
     val bundle: PatchBundle,
     val patches: Set<String>,
+    /** Manager selection key -> bundle-declared patch name for native payload binding. */
+    val declaredPatchNames: Map<String, String> = emptyMap(),
     val options: @RawValue Map<String, Map<String, Any?>>
 ) : Parcelable
