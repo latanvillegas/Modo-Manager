@@ -3054,11 +3054,10 @@ class HomeViewModel(
             val abis = withContext(Dispatchers.IO) {
                 ApkArchitectureResolver.abisOf(selectedApp, pm).distinct()
             }
-            if (abis.isEmpty()) {
-                onStartQuickPatch?.invoke(params)
-            } else {
-                abiSelection = AbiSelectionState(params, abis)
-            }
+            // Always require an explicit user decision before starting the patcher.
+            // An empty list represents a universal APK (no lib/<abi> entries), and the UI
+            // still shows that fact before continuing without an ABI filter.
+            abiSelection = AbiSelectionState(params, abis)
         }
 
         // Clean only UI state
