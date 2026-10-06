@@ -217,13 +217,14 @@ class OptionValuesTest {
             }
         )
         val logger = TestLogger()
+        val currentDefault = patches.getValue("Browser theme").options["browserTheme"].value
 
         patches.applyPatchOptions(
             mapOf("Browser theme" to mapOf("browserTheme" to "removed-theme")),
             logger
         )
 
-        assertEquals("device", patches.getValue("Browser theme").options["browserTheme"].value)
+        assertEquals(currentDefault, patches.getValue("Browser theme").options["browserTheme"].value)
         assertTrue(logger.warnings.single().contains("stale or invalid value"))
     }
 
