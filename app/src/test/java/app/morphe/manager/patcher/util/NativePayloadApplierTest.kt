@@ -39,6 +39,21 @@ class NativePayloadApplierTest {
         }
     }
 
+    @Test
+    fun `payload ABI must match explicitly selected ABI`() {
+        val arm64 = bundle("arm64")
+        try {
+            assertFailsWith<IllegalArgumentException> {
+                NativePayloadApplier.resolve(
+                    selections = listOf(NativePayloadApplier.Selection(arm64, setOf("Patch"))),
+                    selectedAbi = "x86_64",
+                )
+            }
+        } finally {
+            File(arm64.patchesJar).delete()
+        }
+    }
+
     private fun bundle(id: String): PatchBundle {
         val file = File.createTempFile("native-payload-$id-", ".mpp")
         val properties = """
