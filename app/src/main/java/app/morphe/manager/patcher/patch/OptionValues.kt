@@ -91,6 +91,15 @@ fun Map<String, Patch<*>>.applyPatchOptions(
             "Option \"$key\" of the \"$patchName\" patch does not accept \"$value\" as ${option.type}"
         )
 
+        // A persisted dropdown value may outlive the bundle version that declared it.
+        // The patcher's generic validator does not necessarily enforce membership in values,
+        // so fail closed here before an obsolete preset can overwrite the current default.
+        if (option.values != null && option.values.values.none { it == coerced }) {
+            return@setOption logger.warn(
+                "Option \"$key\" of the \"$patchName\" patch rejected stale or invalid value \"$coerced\""
+            )
+        }
+
         @Suppress("UNCHECKED_CAST")
         val acceptsValue = (option.validator as (PatchOption<Any?>, Any?) -> Boolean)
         if (!acceptsValue(option as PatchOption<Any?>, coerced)) {
