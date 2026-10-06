@@ -52,6 +52,7 @@ sealed class Runtime(context: Context) : KoinComponent {
         outputFile: String,
         packageName: String,
         selectedPatches: PatchSelection,
+        declaredPatchNames: Map<Int, Map<String, String>> = emptyMap(),
         options: Options,
         logger: Logger,
         onPatchCompleted: suspend (String) -> Unit,
