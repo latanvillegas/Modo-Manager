@@ -65,6 +65,7 @@ data class PatchBundle(val patchesJar: String) : Parcelable {
         val id: String,
         val apkEntry: String,
         val payloadEntry: String,
+        val patchName: String,
         val originalSha256: String,
         val replacementSha256: String,
     )
@@ -82,6 +83,7 @@ data class PatchBundle(val patchesJar: String) : Parcelable {
      * capabilities=DEX,RESOURCE,NATIVE
      * payload.<id>.apkEntry=lib/<abi>/<name>.so
      * payload.<id>.entry=payload/native/<abi>/<name>.so
+     * payload.<id>.patchName=<exact patch name>
      * payload.<id>.originalSha256=<64 hex>
      * payload.<id>.replacementSha256=<64 hex>
      */
@@ -90,25 +92,40 @@ data class PatchBundle(val patchesJar: String) : Parcelable {
         val properties = java.util.Properties().apply {
             jar.getInputStream(manifestEntry).use(::load)
         }
-        val capabilities = properties.getProperty("capabilities").orEmpty()
-            .split(',').mapNotNull { raw ->
-                raw.trim().takeIf { it.isNotEmpty() }?.let {
-                    runCatching { Capability.valueOf(it.uppercase()) }.getOrNull()
-                }
-            }.toSet()
+        val capabilityNames = properties.getProperty("capabilities").orEmpty()
+            .split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        val capabilities = capabilityNames.map { raw ->
+            runCatching { Capability.valueOf(raw.uppercase()) }
+                .getOrElse { error("Unknown patch bundle capability: $raw") }
+        }.toSet()
 
+        val payloadKey = Regex("""payload\.([^.]+)\.(apkEntry|entry|patchName|originalSha256|replacementSha256)""")
         val ids = properties.stringPropertyNames()
-            .mapNotNull { key -> Regex("""payload\.([^.]+)\.apkEntry""").matchEntire(key)?.groupValues?.get(1) }
+            .mapNotNull { key -> payloadKey.matchEntire(key)?.groupValues?.get(1) }
             .distinct().sorted()
 
         val payloads = ids.map { id ->
+            require(id.matches(Regex("[A-Za-z0-9_-]{1,80}"))) { "Unsafe native payload id: $id" }
             fun required(suffix: String) = properties.getProperty("payload.$id.$suffix")
                 ?.takeIf { it.isNotBlank() }
                 ?: error("Native payload $id is missing $suffix")
+            val apkEntry = required("apkEntry")
+            require(
+                apkEntry.matches(Regex("""lib/[^/]+/[^/]+\.so""")) &&
+                    !apkEntry.contains("..") &&
+                    !apkEntry.startsWith("/")
+            ) { "Unsafe native APK entry: $apkEntry" }
+            val payloadEntry = required("entry")
+            require(
+                payloadEntry.matches(Regex("""payload/native/[^/]+/[^/]+\.so""")) &&
+                    !payloadEntry.contains("..") &&
+                    !payloadEntry.startsWith("/")
+            ) { "Unsafe native payload entry: $payloadEntry" }
             NativePayload(
                 id = id,
-                apkEntry = required("apkEntry"),
-                payloadEntry = required("entry"),
+                apkEntry = apkEntry,
+                payloadEntry = payloadEntry,
+                patchName = required("patchName"),
                 originalSha256 = requiredHash(required("originalSha256"), id, "originalSha256"),
                 replacementSha256 = requiredHash(required("replacementSha256"), id, "replacementSha256"),
             )
@@ -133,15 +150,20 @@ data class PatchBundle(val patchesJar: String) : Parcelable {
 
         directory.mkdirs()
         val target = File(directory, "${payload.id}.so")
-        jar.getInputStream(entry).use { input ->
-            FileOutputStream(target).use { output -> input.copyTo(output) }
+        try {
+            jar.getInputStream(entry).use { input ->
+                FileOutputStream(target).use { output -> input.copyTo(output) }
+            }
+            val actual = sha256(target)
+            check(actual.equals(payload.replacementSha256, ignoreCase = true)) {
+                "Native payload SHA-256 mismatch for ${payload.id}: expected " +
+                    "${payload.replacementSha256}, got $actual"
+            }
+            target
+        } catch (error: Throwable) {
+            target.delete()
+            throw error
         }
-        val actual = sha256(target)
-        check(actual.equals(payload.replacementSha256, ignoreCase = true)) {
-            "Native payload SHA-256 mismatch for ${payload.id}: expected " +
-                "${payload.replacementSha256}, got $actual"
-        }
-        target
     }
 
     private fun requiredHash(value: String, id: String, field: String): String {
