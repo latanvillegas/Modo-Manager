@@ -17,7 +17,10 @@ object NativePayloadApplier {
         val patchNames: Set<String>,
     )
 
-    fun resolve(selections: Collection<Selection>): List<Pair<PatchBundle, PatchBundle.NativePayload>> {
+    fun resolve(
+        selections: Collection<Selection>,
+        selectedAbi: String? = null,
+    ): List<Pair<PatchBundle, PatchBundle.NativePayload>> {
         val selected = selections.flatMap { selection ->
             selection.bundle.nativePayloadsFor(selection.patchNames)
                 .map { payload -> selection.bundle to payload }
@@ -28,6 +31,18 @@ object NativePayloadApplier {
         require(duplicateTargets.isEmpty()) {
             "Selected native payloads conflict on APK entries: ${duplicateTargets.sorted().joinToString(",")}"
         }
+        selectedAbi?.let { requestedAbi ->
+            require(requestedAbi in Abi.NAMES) { "Unsupported selected ABI: $requestedAbi" }
+            val mismatches = selected.mapNotNull { (_, payload) ->
+                val payloadAbi = Abi.namedIn(payload.apkEntry) ?: return@mapNotNull null
+                payload.takeIf { payloadAbi != requestedAbi }?.let {
+                    "${it.id}:${it.apkEntry} ($payloadAbi)"
+                }
+            }
+            require(mismatches.isEmpty()) {
+                "Native payload ABI does not match selected ABI $requestedAbi: ${mismatches.joinToString(",")}"
+            }
+        }
         return selected
     }
 
@@ -36,8 +51,9 @@ object NativePayloadApplier {
         selections: Collection<Selection>,
         workspace: File,
         logger: Logger,
+        selectedAbi: String? = null,
     ): List<PatchBundle.NativePayload> {
-        val selected = resolve(selections)
+        val selected = resolve(selections, selectedAbi)
         if (selected.isEmpty()) return emptyList()
 
         val payloadDir = workspace.resolve("native-payloads").also {
