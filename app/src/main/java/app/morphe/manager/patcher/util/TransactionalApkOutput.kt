@@ -9,9 +9,14 @@ object TransactionalApkOutput {
         val previous = previous(finalOutput)
         pending.delete()
 
-        if (finalOutput.exists()) {
+        if (finalOutput.isFile && finalOutput.length() > 0L) {
             previous.delete()
             return
+        }
+        // A zero-byte final can be left by an interrupted fallback copy. It is not a committed
+        // artifact and must never win over the last known-good backup.
+        if (finalOutput.exists()) {
+            check(finalOutput.delete()) { "Could not remove invalid patched APK before recovery" }
         }
         if (previous.exists()) {
             check(previous.renameTo(finalOutput) || runCatching {
