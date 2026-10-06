@@ -15,6 +15,7 @@ import app.morphe.manager.patcher.logger.Logger
 import app.morphe.manager.patcher.patch.PatchBundle
 import app.morphe.manager.patcher.patch.PatchSelectionValidator
 import app.morphe.manager.patcher.patch.applyPatchOptions
+import app.morphe.manager.patcher.patch.requirePatchOptionsAvailable
 import app.morphe.manager.patcher.runtime.ProcessRuntime
 import app.morphe.manager.patcher.runtime.ResourceMonitor
 import app.morphe.manager.patcher.runtime.heapLimitMebibytes
@@ -78,6 +79,7 @@ class PatcherProcess(private val context: Context) : IPatcherProcess.Stub() {
                     available = bundlePatches.keys,
                 )
 
+                bundlePatches.requirePatchOptionsAvailable(config.options)
                 bundlePatches.applyPatchOptions(config.options, logger)
 
                 bundlePatches.filterKeys { it in config.patches }.values
