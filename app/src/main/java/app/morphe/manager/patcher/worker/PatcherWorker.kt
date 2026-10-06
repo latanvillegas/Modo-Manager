@@ -467,7 +467,7 @@ class PatcherWorker(
                     patchNames = patchNames.toSet(),
                 )
             }
-            val nativePayloads = NativePayloadApplier.resolve(nativeSelections)
+            val nativePayloads = NativePayloadApplier.resolve(nativeSelections, args.selectedAbi)
             val nativePayloadBytes = nativePayloads
                 .groupBy({ (bundle, _) -> bundle }, { (_, payload) -> payload })
                 .entries.fold(0L) { total, (bundle, payloads) ->
