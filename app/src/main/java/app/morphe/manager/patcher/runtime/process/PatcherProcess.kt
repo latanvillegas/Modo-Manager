@@ -82,6 +82,7 @@ class PatcherProcess(private val context: Context) : IPatcherProcess.Stub() {
                 workspace = File(parameters.cacheDir),
                 logger = logger,
                 skipUnneededSplits = parameters.skipUnneededSplits,
+                selectedAbi = parameters.selectedAbi,
                 onEvent = { event ->
                     // Forward raw event over IPC; main process resolves the localized
                     // label and logs it so the app locale is used, not the system locale
