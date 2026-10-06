@@ -53,7 +53,13 @@ class AssetDownloader(
                 direct(signedUrl, saveLocation, onProgress)
             }
         } catch (error: Throwable) {
-            saveLocation.delete()
+            if (!saveLocation.delete() && saveLocation.exists()) {
+                error.addSuppressed(
+                    IllegalStateException(
+                        "Could not remove incomplete downloaded asset: ${saveLocation.path}"
+                    )
+                )
+            }
             throw error
         }
     }
