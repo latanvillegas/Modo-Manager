@@ -6,7 +6,7 @@ import java.io.File
 data class PatchRunReport(
     val packageName: String,
     val version: String?,
-    val inputSha256: String,
+    val inputSha256: String?,
     val outputSha256: String?,
     val inputSize: Long,
     val outputSize: Long?,
@@ -19,7 +19,7 @@ data class PatchRunReport(
     fun toText(): String = buildString {
         appendLine("package=$packageName")
         appendLine("version=${version ?: "?"}")
-        appendLine("input_sha256=$inputSha256")
+        appendLine("input_sha256=${inputSha256 ?: "?"}")
         appendLine("output_sha256=${outputSha256 ?: "?"}")
         appendLine("input_size=$inputSize")
         appendLine("output_size=${outputSize ?: -1}")
@@ -34,7 +34,7 @@ data class PatchRunReport(
         append('{')
         append("\"packageName\":\"${json(packageName)}\",")
         append("\"version\":${version?.let { "\"${json(it)}\"" } ?: "null"},")
-        append("\"inputSha256\":\"${json(inputSha256)}\",")
+        append("\"inputSha256\":${inputSha256?.let { "\\\"${json(it)}\\\"" } ?: "null"},")
         append("\"outputSha256\":${outputSha256?.let { "\"${json(it)}\"" } ?: "null"},")
         append("\"inputSize\":$inputSize,")
         append("\"outputSize\":${outputSize ?: "null"},")
