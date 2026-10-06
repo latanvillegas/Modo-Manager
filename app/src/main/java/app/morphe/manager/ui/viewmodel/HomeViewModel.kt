@@ -2204,9 +2204,11 @@ class HomeViewModel(
             processingApkSelection = true
             try {
                 val selectedApp = withContext(Dispatchers.IO) {
+                    var preparedFile: File? = null
                     try {
                         if (installedInfo.isSplit) {
                             val archive = File.createTempFile("installed_", ".apks", filesystem.uiTempDir)
+                            preparedFile = archive
                             createApksArchive(installedInfo, archive)
                             SelectedApp.Local(
                                 packageName = packageName,
@@ -2220,6 +2222,7 @@ class HomeViewModel(
                             val source = File(installedInfo.apkPath)
                             if (!source.exists()) return@withContext null
                             val tempFile = File.createTempFile("installed_", ".apk", filesystem.uiTempDir)
+                            preparedFile = tempFile
                             source.copyTo(tempFile, overwrite = true)
                             SelectedApp.Local(
                                 packageName = packageName,
@@ -2231,6 +2234,7 @@ class HomeViewModel(
                             )
                         }
                     } catch (e: Exception) {
+                        preparedFile?.delete()
                         Log.e(tag, "Failed to prepare installed APK", e)
                         null
                     }
@@ -2384,9 +2388,11 @@ class HomeViewModel(
             processingApkSelection = true
             try {
                 val selectedApp = withContext(Dispatchers.IO) {
+                    var preparedFile: File? = null
                     try {
                         if (item.info.isSplit) {
                             val archive = File.createTempFile("installed_", ".apks", filesystem.uiTempDir)
+                            preparedFile = archive
                             createApksArchive(item.info, archive)
                             SelectedApp.Local(
                                 packageName = item.packageName,
@@ -2400,6 +2406,7 @@ class HomeViewModel(
                             val source = File(item.info.apkPath)
                             if (!source.exists()) return@withContext null
                             val tempFile = File.createTempFile("installed_", ".apk", filesystem.uiTempDir)
+                            preparedFile = tempFile
                             source.copyTo(tempFile, overwrite = true)
                             SelectedApp.Local(
                                 packageName = item.packageName,
@@ -2411,6 +2418,7 @@ class HomeViewModel(
                             )
                         }
                     } catch (e: Exception) {
+                        preparedFile?.delete()
                         Log.e(tag, "Failed to prepare APK from picker", e)
                         null
                     }
