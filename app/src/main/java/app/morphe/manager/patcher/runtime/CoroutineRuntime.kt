@@ -100,7 +100,7 @@ class CoroutineRuntime(private val context: Context) : Runtime(context) {
                                     "Selected patch bundle $uid disappeared before native payload execution"
                                 },
                                 patchNames = patchNames,
-                                declaredPatchNames = patchNames.mapTo(mutableSetOf()) { key ->
+                                declaredPatchNamesByKey = patchNames.associateWith { key ->
                                     declaredPatchNames[uid]?.get(key) ?: key
                                 },
                             )
