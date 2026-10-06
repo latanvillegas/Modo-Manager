@@ -106,8 +106,7 @@ fun Map<String, Patch<*>>.applyPatchOptions(
         @Suppress("UNCHECKED_CAST")
         fun acceptsCoercedValue(): Boolean {
             val typedOption = option as PatchOption<Any?>
-            val acceptsValue = option.validator as (PatchOption<Any?>, Any?) -> Boolean
-            return acceptsValue(typedOption, coerced)
+            return option.validator(typedOption, coerced)
         }
         if (!acceptsCoercedValue()) {
             return@setOption logger.warn(
