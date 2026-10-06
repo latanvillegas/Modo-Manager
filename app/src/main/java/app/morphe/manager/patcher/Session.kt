@@ -21,6 +21,22 @@ import java.nio.file.StandardCopyOption
 
 internal typealias PatchList = List<Patch<*>>
 
+internal fun cleanupAfterConstructionFailure(
+    error: Throwable,
+    vararg directories: File,
+    deleteRecursively: (File) -> Boolean = File::deleteRecursively,
+) {
+    directories.forEach { directory ->
+        if (!deleteRecursively(directory) && directory.exists()) {
+            error.addSuppressed(
+                IllegalStateException(
+                    "Could not remove session scratch after Patcher construction failure: ${directory.path}"
+                )
+            )
+        }
+    }
+}
+
 class Session(
     cacheDir: String,
     frameworkDir: String,
@@ -54,8 +70,7 @@ class Session(
     } catch (error: Throwable) {
         // A constructor failure means the caller never receives a Session and therefore cannot
         // invoke close(); reclaim the scratch allocated above before propagating the real cause.
-        tempDir.deleteRecursively()
-        fileWorkspace.deleteRecursively()
+        cleanupAfterConstructionFailure(error, tempDir, fileWorkspace)
         throw error
     }
 
