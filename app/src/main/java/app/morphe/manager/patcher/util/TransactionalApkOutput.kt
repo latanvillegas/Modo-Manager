@@ -7,10 +7,10 @@ object TransactionalApkOutput {
     fun recover(finalOutput: File) {
         val pending = pending(finalOutput)
         val previous = previous(finalOutput)
-        pending.delete()
+        deleteIfExists(pending, "stale pending patched APK")
 
         if (finalOutput.isFile && finalOutput.length() > 0L) {
-            previous.delete()
+            deleteIfExists(previous, "stale previous patched APK")
             return
         }
         // A zero-byte final can be left by an interrupted fallback copy. It is not a committed
@@ -44,7 +44,7 @@ object TransactionalApkOutput {
         require(pendingOutput.isFile) { "Pending patched APK does not exist" }
         require(pendingOutput.length() > 0L) { "Pending patched APK is empty" }
         val backup = previous(finalOutput)
-        backup.delete()
+        deleteIfExists(backup, "stale previous patched APK")
 
         if (finalOutput.exists()) {
             check(finalOutput.renameTo(backup)) {
@@ -64,7 +64,7 @@ object TransactionalApkOutput {
             check(finalOutput.isFile && finalOutput.length() == expectedSize) {
                 "Committed patched APK size mismatch: expected $expectedSize, got ${finalOutput.length()}"
             }
-            backup.delete()
+            deleteIfExists(backup, "previous patched APK after successful commit")
         } catch (error: Throwable) {
             finalOutput.delete()
             if (backup.exists()) {
@@ -80,6 +80,12 @@ object TransactionalApkOutput {
                 }
             }
             throw error
+        }
+    }
+
+    private fun deleteIfExists(file: File, label: String) {
+        if (file.exists()) {
+            check(file.delete()) { "Could not remove $label: ${file.path}" }
         }
     }
 
