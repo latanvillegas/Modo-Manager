@@ -46,6 +46,27 @@ class OriginalApkStagingTest {
     }
 
     @Test
+    fun `an empty source never replaces an existing archive`() {
+        target.writeText("old archive")
+        val emptySource = dir.resolve("empty.apk").apply { createNewFile() }
+
+        assertFails { copyThroughStaging(emptySource, target) }
+
+        assertEquals("old archive", target.readText())
+        assertTrue(stagedCopies().isEmpty())
+    }
+
+    @Test
+    fun `an empty source cannot create a retained archive`() {
+        val emptySource = dir.resolve("empty.apk").apply { createNewFile() }
+
+        assertFails { copyThroughStaging(emptySource, target) }
+
+        assertTrue(!target.exists())
+        assertTrue(stagedCopies().isEmpty())
+    }
+
+    @Test
     fun `a copy that fails without an archive to replace leaves nothing behind`() {
         val unreadableSource = dir.resolve("missing.apk")
 
