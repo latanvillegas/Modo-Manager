@@ -106,6 +106,7 @@ class PatcherProcess(private val context: Context) : IPatcherProcess.Stub() {
                         },
                         workspace = preparation.file.parentFile ?: File(parameters.cacheDir),
                         logger = logger,
+                        selectedAbi = parameters.selectedAbi,
                     )
                     events.progress(null, State.COMPLETED.name, null)
 
