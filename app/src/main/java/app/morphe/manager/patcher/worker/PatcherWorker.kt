@@ -37,6 +37,7 @@ import app.morphe.manager.patcher.runtime.coerceMemoryLimit
 import app.morphe.manager.patcher.runtime.heapLimitMebibytes
 import app.morphe.manager.patcher.split.SplitApkPreparer
 import app.morphe.manager.patcher.util.NativeLibStripper
+import app.morphe.manager.patcher.util.NativeLibraryAlignment
 import app.morphe.manager.patcher.util.ApkPreflight
 import app.morphe.manager.patcher.util.PatchRunReport
 import app.morphe.manager.patcher.util.PatchStoragePreflight
@@ -309,6 +310,7 @@ class PatcherWorker(
         }
 
         val patchedApk = fs.tempDir.resolve("patched.apk")
+        var preparedRuntimeInput: File? = null
         var succeeded = false
         var autoInstallPending = false
         val completionSoundEnabled = prefs.patcherCompletionSound.get()
@@ -449,7 +451,8 @@ class PatcherWorker(
             // writes and 16 KiB-aligns the final APK itself. Rewriting patchedApk afterwards would
             // move STORED .so entries and undo that alignment.
             val runtimeInputFile = if (stripNativeLibs && !inputIsSplitArchive) {
-                val preparedInput = fs.tempDir.resolve("abi-prepared-input.apk")
+                val preparedInput = File.createTempFile("abi-prepared-", ".apk", fs.tempDir)
+                preparedRuntimeInput = preparedInput
                 inputFile.copyTo(preparedInput, overwrite = true)
                 val outputAbis = args.selectedAbi?.let(::listOf)
                     ?: Build.SUPPORTED_ABIS.filter { it.isNotBlank() }
@@ -692,9 +695,10 @@ class PatcherWorker(
                 workDataOf(PROCESS_FAILURE_MESSAGE_KEY to e.stackTraceToString())
             )
         } finally {
-            val preparedInput = fs.tempDir.resolve("abi-prepared-input.apk")
-            if (!preparedInput.delete() && preparedInput.exists()) {
-                Log.w(tag, "Failed to delete temporary ABI-prepared APK: ${preparedInput.absolutePath}".logFmt())
+            preparedRuntimeInput?.let { preparedInput ->
+                if (!preparedInput.delete() && preparedInput.exists()) {
+                    Log.w(tag, "Failed to delete temporary ABI-prepared APK: ${preparedInput.absolutePath}".logFmt())
+                }
             }
             if (!patchedApk.delete() && patchedApk.exists()) {
                 Log.w(tag, "Failed to delete temporary patched APK: ${patchedApk.absolutePath}".logFmt())
