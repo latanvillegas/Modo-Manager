@@ -87,6 +87,11 @@ class PatcherWorker(
         val setInputFile: suspend (File, Boolean, Boolean) -> Unit,
         val onProgress: ProgressEventHandler,
         val patchSources: List<PatchSourceRef> = emptyList(),
+        /**
+         * Manager selection key -> bundle-declared patch name, grouped by bundle UID.
+         * Native payload manifests bind to the declared name rather than a disambiguated UI key.
+         */
+        val declaredPatchNames: Map<Int, Map<String, String>> = emptyMap(),
         /** Optional ABI selected by the user; null keeps automatic device resolution. */
         val selectedAbi: String? = null,
         /**
@@ -465,6 +470,9 @@ class PatcherWorker(
                         "Selected patch bundle disappeared during resolution: $uid"
                     },
                     patchNames = patchNames.toSet(),
+                    declaredPatchNames = patchNames.mapTo(mutableSetOf()) { key ->
+                        args.declaredPatchNames[uid]?.get(key) ?: key
+                    },
                 )
             }
             val nativePayloads = NativePayloadApplier.resolve(nativeSelections, args.selectedAbi)
