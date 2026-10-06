@@ -545,6 +545,10 @@ class PatcherWorker(
             try {
                 keystoreManager.sign(patchedApk, transactionalOutput)
 
+                // Signing normally preserves entry offsets, but its malformed-ZIP fallback
+                // repackages the archive. Verify the artifact that will actually be committed.
+                NativeLibraryAlignment.requireAligned(transactionalOutput)
+
                 val signedPreflight = ApkPreflight.inspect(transactionalOutput)
                 check(signedPreflight.canPatch) {
                     "Signed APK failed structural postflight; final output was not replaced"
