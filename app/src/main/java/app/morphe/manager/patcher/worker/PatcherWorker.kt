@@ -37,6 +37,7 @@ import app.morphe.manager.patcher.runtime.coerceMemoryLimit
 import app.morphe.manager.patcher.runtime.heapLimitMebibytes
 import app.morphe.manager.patcher.split.SplitApkPreparer
 import app.morphe.manager.patcher.util.NativeLibStripper
+import app.morphe.manager.patcher.util.ApkPreflight
 import app.morphe.manager.ui.model.SelectedApp
 import app.morphe.manager.ui.model.State
 import app.morphe.manager.util.*
@@ -332,6 +333,28 @@ class PatcherWorker(
                     args.setInputFile(source, false, false)
                     source
                 }
+            }
+
+            // Generic preflight: reject structurally invalid APKs before the patcher mutates anything.
+            // Split archives are validated after SplitApkPreparer has produced the mono APK.
+            if (!inputIsSplitArchive) {
+                val preflight = ApkPreflight.inspect(inputFile)
+                preflight.findings.forEach { finding ->
+                    val message = "[Preflight] ${finding.code}: ${finding.message}"
+                    when (finding.severity) {
+                        ApkPreflight.Severity.ERROR -> args.logger.error(message)
+                        ApkPreflight.Severity.WARNING -> args.logger.warn(message)
+                        ApkPreflight.Severity.INFO -> args.logger.info(message)
+                    }
+                }
+                check(preflight.canPatch) {
+                    "APK preflight failed; input was not modified"
+                }
+                args.logger.info(
+                    "[Preflight] sha256=${preflight.sha256} size=${preflight.size} " +
+                        "dex=${preflight.dexEntries.size} native=${preflight.nativeEntries.size} " +
+                        "abis=${preflight.abis.joinToString(",")}"
+                )
             }
 
             val useProcessRuntime = prefs.useProcessRuntime.get()
