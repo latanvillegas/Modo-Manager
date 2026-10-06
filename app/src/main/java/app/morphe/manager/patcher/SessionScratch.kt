@@ -23,10 +23,10 @@ internal data class SessionScratch(
         fun create(
             patcherCacheRoot: File,
             fileWorkspaceRoot: File,
+            deleteRecursively: (File) -> Boolean = File::deleteRecursively,
             createTempDirectory: (File, String) -> File = { root, prefix ->
                 Files.createTempDirectory(root.toPath(), prefix).toFile()
             },
-            deleteRecursively: (File) -> Boolean = File::deleteRecursively,
         ): SessionScratch {
             ensureDirectory(patcherCacheRoot, "patcher cache")
             val patcherTemp = createTempDirectory(patcherCacheRoot, "patcher-")
