@@ -49,6 +49,7 @@ import app.morphe.manager.ui.model.State
 import app.morphe.manager.util.*
 import app.morphe.manager.util.PatchSelectionUtils.restrictTo
 import com.topjohnwu.superuser.Shell
+import kotlinx.coroutines.CancellationException
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
@@ -611,27 +612,7 @@ class PatcherWorker(
                     "Signed APK package metadata is unreadable; final output was not replaced"
                 }
 
-                if (finalOutput.exists()) {
-                    val backup = TransactionalApkOutput.previous(finalOutput)
-                    backup.delete()
-                    check(finalOutput.renameTo(backup)) {
-                        "Could not preserve previous output before transactional commit"
-                    }
-                    try {
-                        if (!transactionalOutput.renameTo(finalOutput)) {
-                            transactionalOutput.copyTo(finalOutput, overwrite = true)
-                            transactionalOutput.delete()
-                        }
-                        backup.delete()
-                    } catch (error: Throwable) {
-                        finalOutput.delete()
-                        backup.renameTo(finalOutput)
-                        throw error
-                    }
-                } else if (!transactionalOutput.renameTo(finalOutput)) {
-                    transactionalOutput.copyTo(finalOutput, overwrite = true)
-                    transactionalOutput.delete()
-                }
+                TransactionalApkOutput.commit(finalOutput, transactionalOutput)
 
                 val reportChanges = buildList {
                     add("Selected patches applied: $selectedCount")
@@ -688,6 +669,9 @@ class PatcherWorker(
             autoInstallPending = installerManager.autoInstallAllowed(outputPackageName)
             succeeded = true
             Result.success()
+        } catch (e: CancellationException) {
+            args.logger.warn("Patching cancelled; temporary workspace will be discarded")
+            throw e
         } catch (e: ProcessRuntime.ProcessExitException) {
             Log.e(
                 tag,
