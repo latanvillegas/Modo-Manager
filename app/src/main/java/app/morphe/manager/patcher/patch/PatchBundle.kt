@@ -137,6 +137,23 @@ data class PatchBundle(val patchesJar: String) : Parcelable {
     }
 
     /**
+     * Resolves only payloads explicitly bound to selected patches. This does not execute them.
+     * Duplicate payload IDs or duplicate APK targets are rejected because replacement order
+     * would otherwise change the result.
+     */
+    fun nativePayloadsFor(selectedPatchNames: Set<String>): List<NativePayload> {
+        val payloads = nativePayloadManifest()?.payloads.orEmpty()
+            .filter { it.patchName in selectedPatchNames }
+        require(payloads.map { it.id }.distinct().size == payloads.size) {
+            "Duplicate native payload id"
+        }
+        require(payloads.map { it.apkEntry }.distinct().size == payloads.size) {
+            "Multiple selected native payloads target the same APK entry"
+        }
+        return payloads
+    }
+
+    /**
      * Extracts one declared payload after verifying its bytes. Paths are never trusted as
      * filesystem paths; the payload is read only as a JAR entry and copied to [directory].
      */
