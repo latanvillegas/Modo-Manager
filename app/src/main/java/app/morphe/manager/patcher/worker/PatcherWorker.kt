@@ -79,6 +79,8 @@ class PatcherWorker(
         val setInputFile: suspend (File, Boolean, Boolean) -> Unit,
         val onProgress: ProgressEventHandler,
         val patchSources: List<PatchSourceRef> = emptyList(),
+        /** Optional ABI selected by the user; null keeps automatic device resolution. */
+        val selectedAbi: String? = null,
         /**
          * Batch runs announce the whole queue once instead of every app, so the completion
          * tone and notification are suppressed per item.
@@ -460,6 +462,7 @@ class PatcherWorker(
                     onPatchCompleted,
                     ::updateProgress,
                     stripNativeLibs,
+                    args.selectedAbi,
                     onMergedApkReady,
                     onRestart
                 )
@@ -490,6 +493,7 @@ class PatcherWorker(
                     onPatchCompleted,
                     ::updateProgress,
                     stripNativeLibs,
+                    args.selectedAbi,
                     onMergedApkReady,
                     onRestart
                 )
