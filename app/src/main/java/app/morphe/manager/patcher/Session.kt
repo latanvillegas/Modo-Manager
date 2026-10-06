@@ -32,18 +32,14 @@ class Session(
     private fun updateProgress(name: String? = null, state: State? = null, message: String? = null) =
         onProgress(name, state, message)
 
-    private val tempRoot = File(cacheDir).also {
-        check(it.mkdirs() || it.isDirectory) { "Could not create patcher cache directory: ${it.path}" }
-    }
-    private val tempDir = Files.createTempDirectory(tempRoot.toPath(), "patcher-").toFile()
-
-    // Scratch space for patches must be private to this Session too. A shared patch-workspace
-    // lets concurrent workers overwrite each other's files even when their APK inputs differ.
-    private val fileWorkspaceRoot = androidContext.cacheDir.also {
-        check(it.mkdirs() || it.isDirectory) { "Could not create app cache directory: ${it.path}" }
-    }
-    private val fileWorkspace =
-        Files.createTempDirectory(fileWorkspaceRoot.toPath(), "patch-workspace-").toFile()
+    // Both scratch directories are acquired as one transaction. If the second allocation fails,
+    // the first is reclaimed before this constructor can escape.
+    private val scratch = SessionScratch.create(
+        patcherCacheRoot = File(cacheDir),
+        fileWorkspaceRoot = androidContext.cacheDir,
+    )
+    private val tempDir = scratch.patcherTemp
+    private val fileWorkspace = scratch.fileWorkspace
 
     private val patcher = try {
         Patcher(
