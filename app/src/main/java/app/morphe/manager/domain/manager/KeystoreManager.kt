@@ -101,7 +101,11 @@ class KeystoreManager(app: Application, private val prefs: PreferencesManager) {
                 // problem, so it travels with the failure the user ends up seeing
                 throw retry.apply { addSuppressed(e) }
             } finally {
-                sanitized.delete()
+                // The sanitized archive is scratch space. Cleanup must not turn a successful
+                // signature into a failure or replace the signer's primary exception.
+                if (!sanitized.delete() && sanitized.exists()) {
+                    Log.w(TAG, "Failed to delete sanitized signing APK: ${sanitized.absolutePath}")
+                }
             }
         }
     }
