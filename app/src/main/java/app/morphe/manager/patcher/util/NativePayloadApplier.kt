@@ -27,6 +27,18 @@ object NativePayloadApplier {
         selections: Collection<Selection>,
         selectedAbi: String? = null,
     ): List<Pair<PatchBundle, PatchBundle.NativePayload>> {
+        selections.forEach { selection ->
+            val duplicateDeclaredNames = selection.declaredPatchNames
+                .groupingBy { it }
+                .eachCount()
+                .filterValues { it > 1 }
+                .keys
+            require(duplicateDeclaredNames.isEmpty()) {
+                "Selected native patches are ambiguous by declared name: " +
+                    duplicateDeclaredNames.sorted().joinToString(",")
+            }
+        }
+
         val selected = selections.flatMap { selection ->
             selection.bundle.nativePayloadsFor(selection.declaredPatchNames)
                 .map { payload -> selection.bundle to payload }
