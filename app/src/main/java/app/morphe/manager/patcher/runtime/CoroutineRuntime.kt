@@ -4,6 +4,7 @@ import android.content.Context
 import app.morphe.manager.patcher.Session
 import app.morphe.manager.patcher.logger.Logger
 import app.morphe.manager.patcher.patch.PatchBundle
+import app.morphe.manager.patcher.patch.PatchSelectionValidator
 import app.morphe.manager.patcher.patch.applyPatchOptions
 import app.morphe.manager.patcher.split.SplitApkPreparer
 import app.morphe.manager.patcher.util.NativePayloadApplier
@@ -49,8 +50,14 @@ class CoroutineRuntime(private val context: Context) : Runtime(context) {
                 }
 
             val patchList = selectedPatches.flatMap { (bundle, selected) ->
-                allPatches[bundle]?.filterKeys { it in selected }?.values
+                val bundlePatches = allPatches[bundle]
                     ?: throw IllegalArgumentException("Patch bundle $bundle does not exist")
+                PatchSelectionValidator.requireAvailable(
+                    bundleLabel = bundle.toString(),
+                    requested = selected,
+                    available = bundlePatches.keys,
+                )
+                bundlePatches.filterKeys { it in selected }.values
             }
 
             // Set all patch options
