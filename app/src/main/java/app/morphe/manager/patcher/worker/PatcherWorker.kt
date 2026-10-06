@@ -26,10 +26,12 @@ import app.morphe.manager.domain.manager.KeystoreManager
 import app.morphe.manager.domain.manager.PreferencesManager
 import app.morphe.manager.domain.repository.InstalledAppRepository
 import app.morphe.manager.domain.repository.OriginalApkRepository
+import app.morphe.manager.domain.repository.PatchBundleRepository
 import app.morphe.manager.domain.worker.Worker
 import app.morphe.manager.domain.worker.WorkerRepository
 import app.morphe.manager.patcher.logger.Logger
 import app.morphe.manager.patcher.patch.ApkArchitectureResolver
+import app.morphe.manager.patcher.patch.PatchBundle
 import app.morphe.manager.patcher.patch.PatchSourceRef
 import app.morphe.manager.patcher.runtime.CoroutineRuntime
 import app.morphe.manager.patcher.runtime.ProcessRuntime
@@ -64,6 +66,7 @@ class PatcherWorker(
     private val fs: Filesystem by inject()
     private val installedAppRepository: InstalledAppRepository by inject()
     private val originalApkRepository: OriginalApkRepository by inject()
+    private val patchBundleRepository: PatchBundleRepository by inject()
     private val rootInstaller: RootInstaller by inject()
     private val installerManager: InstallerManager by inject()
 
@@ -452,16 +455,50 @@ class PatcherWorker(
 
             val options = args.options.restrictTo(args.selectedPatches)
 
-            // For a regular APK, strip a temporary input copy before patching. The patcher then
-            // writes and 16 KiB-aligns the final APK itself. Rewriting patchedApk afterwards would
-            // move STORED .so entries and undo that alignment.
-            val runtimeInputFile = if (stripNativeLibs && !inputIsSplitArchive) {
-                val preparedInput = File.createTempFile("abi-prepared-", ".apk", runWorkspace)
+            // Native payloads are bundle data, never app-specific Manager rules. Resolve only
+            // payloads bound to patches selected from that exact bundle.
+            val nativePayloads = args.selectedPatches.flatMap { (uid, patchNames) ->
+                val bundle = patchBundleRepository.bundles.value[uid] ?: return@flatMap emptyList()
+                bundle.nativePayloadsFor(patchNames.toSet()).map { payload -> bundle to payload }
+            }
+            val duplicateNativeTargets = nativePayloads.groupBy { (_, payload) -> payload.apkEntry }
+                .filterValues { it.size > 1 }
+                .keys
+            check(duplicateNativeTargets.isEmpty()) {
+                "Selected native payloads conflict on APK entries: ${duplicateNativeTargets.joinToString(",")}"
+            }
+            check(nativePayloads.isEmpty() || !inputIsSplitArchive) {
+                "Native payload replacement for split archives requires the merged mono-APK and is not supported safely yet"
+            }
+
+            // Any ZIP rewrite happens on a private input copy before the patcher. The patcher
+            // writes and 16 KiB-aligns its own output afterwards, so replacement/ABI filtering
+            // cannot invalidate the alignment of the exported APK.
+            val needsPreparedInput = !inputIsSplitArchive && (stripNativeLibs || nativePayloads.isNotEmpty())
+            val runtimeInputFile = if (needsPreparedInput) {
+                val preparedInput = File.createTempFile("runtime-input-", ".apk", runWorkspace)
                 preparedRuntimeInput = preparedInput
                 inputFile.copyTo(preparedInput, overwrite = true)
-                val outputAbis = args.selectedAbi?.let(::listOf)
-                    ?: Build.SUPPORTED_ABIS.filter { it.isNotBlank() }
-                NativeLibStripper.strip(preparedInput, outputAbis, args.logger)
+
+                nativePayloads.forEach { (bundle, payload) ->
+                    val extracted = bundle.extractNativePayload(payload, runWorkspace.resolve("native-payloads"))
+                    NativeLibStripper.replaceNativeLibrary(
+                        preparedInput,
+                        NativeLibStripper.NativeReplacement(
+                            apkEntry = payload.apkEntry,
+                            payload = extracted,
+                            expectedOriginalSha256 = payload.originalSha256,
+                            expectedReplacementSha256 = payload.replacementSha256,
+                        ),
+                        args.logger,
+                    )
+                }
+
+                if (stripNativeLibs) {
+                    val outputAbis = args.selectedAbi?.let(::listOf)
+                        ?: Build.SUPPORTED_ABIS.filter { it.isNotBlank() }
+                    NativeLibStripper.strip(preparedInput, outputAbis, args.logger)
+                }
                 preparedInput
             } else {
                 inputFile
