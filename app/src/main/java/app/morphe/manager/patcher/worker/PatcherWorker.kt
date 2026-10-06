@@ -468,10 +468,6 @@ class PatcherWorker(
             check(duplicateNativeTargets.isEmpty()) {
                 "Selected native payloads conflict on APK entries: ${duplicateNativeTargets.joinToString(",")}"
             }
-            check(nativePayloads.isEmpty() || !inputIsSplitArchive) {
-                "Native payload replacement for split archives requires the merged mono-APK and is not supported safely yet"
-            }
-
             // Any ZIP rewrite happens on a private input copy before the patcher. The patcher
             // writes and 16 KiB-aligns its own output afterwards, so replacement/ABI filtering
             // cannot invalidate the alignment of the exported APK.
