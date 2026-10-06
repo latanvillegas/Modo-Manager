@@ -10,6 +10,24 @@ import kotlin.test.assertTrue
 
 class TransactionalApkOutputTest {
     @Test
+    fun `recovery discards orphan pending output when no committed artifact exists`() {
+        val dir = createTempDirectory("morphe-transaction-").toFile()
+        val output = File(dir, "patched.apk")
+        val pending = TransactionalApkOutput.pending(output)
+        try {
+            pending.writeBytes(byteArrayOf(0x50, 0x4b, 0x03, 0x04))
+
+            TransactionalApkOutput.recover(output)
+
+            assertFalse(output.exists())
+            assertFalse(pending.exists())
+            assertFalse(TransactionalApkOutput.previous(output).exists())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `restores previous output when final output is missing`() {
         val dir = createTempDirectory("morphe-transaction-").toFile()
         val output = File(dir, "patched.apk")
