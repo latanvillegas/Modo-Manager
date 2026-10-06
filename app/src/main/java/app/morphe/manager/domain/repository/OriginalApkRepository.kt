@@ -25,12 +25,22 @@ internal const val STAGING_SUFFIX = ".part"
  * at [target] as it was.
  */
 internal fun copyThroughStaging(source: File, target: File) {
+    require(source.isFile) { "Original APK source does not exist: ${source.path}" }
+    val sourceSize = source.length()
+    require(sourceSize > 0L) { "Original APK source is empty: ${source.path}" }
+
     val staging = File(target.path + STAGING_SUFFIX)
     try {
         source.copyTo(staging, overwrite = true)
+        check(staging.isFile && staging.length() == sourceSize) {
+            "Staged original APK size mismatch: expected $sourceSize, got ${staging.length()}"
+        }
         // Files.move replaces the archive in one step and reports why it could not, which
         // File.renameTo neither guarantees nor tells
         Files.move(staging.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        check(target.isFile && target.length() == sourceSize) {
+            "Committed original APK size mismatch: expected $sourceSize, got ${target.length()}"
+        }
     } catch (e: Exception) {
         staging.delete()
         throw e
@@ -73,9 +83,14 @@ class OriginalApkRepository(
         try {
             val existing = dao.get(packageName)
 
-            // Copy file if source is different, and move it into place only once written in full
+            // Copy file if source is different, and move it into place only once written in full.
+            // Even when the caller already points at the target, never publish a missing/empty archive.
             if (copies) {
                 copyThroughStaging(sourceFile, targetFile)
+            } else {
+                check(targetFile.isFile && targetFile.length() > 0L) {
+                    "Original APK target is missing or empty: ${targetFile.path}"
+                }
             }
 
             // Save to database
