@@ -12,6 +12,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import java.util.zip.CRC32
 
 object NativeLibStripper {
     private const val TAG = "Morphe NativeLibStripper"
@@ -121,10 +122,15 @@ object NativeLibStripper {
                     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                     var entry = zis.nextEntry
                     while (entry != null) {
-                        val newEntry = cloneEntry(entry, preserveStoredMetadata = entry.name != replacement.apkEntry)
+                        val replacingEntry = entry.name == replacement.apkEntry
+                        val newEntry = if (replacingEntry && entry.method == ZipEntry.STORED) {
+                            storedReplacementEntry(entry, replacement.payload)
+                        } else {
+                            cloneEntry(entry, preserveStoredMetadata = !replacingEntry)
+                        }
                         zos.putNextEntry(newEntry)
                         if (!entry.isDirectory) {
-                            if (entry.name == replacement.apkEntry) {
+                            if (replacingEntry) {
                                 replacement.payload.inputStream().buffered().use { input ->
                                     input.copyTo(zos)
                                 }
@@ -201,6 +207,29 @@ object NativeLibStripper {
     private fun shouldKeepZipEntry(name: String, allowedAbis: Set<String>): Boolean {
         val abi = extractAbiFromEntry(name) ?: return true
         return abi in allowedAbis
+    }
+
+    /**
+     * A native library stored uncompressed must stay STORED after replacement. Android can map
+     * such entries directly from the APK; changing them to DEFLATED changes installation/runtime
+     * semantics. ZipOutputStream requires the replacement size and CRC before putNextEntry().
+     */
+    private fun storedReplacementEntry(original: ZipEntry, payload: File): ZipEntry {
+        val clone = cloneEntry(original, preserveStoredMetadata = false)
+        val crc = CRC32()
+        payload.inputStream().buffered().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read == -1) break
+                crc.update(buffer, 0, read)
+            }
+        }
+        clone.method = ZipEntry.STORED
+        clone.size = payload.length()
+        clone.compressedSize = payload.length()
+        clone.crc = crc.value
+        return clone
     }
 
     private fun cloneEntry(entry: ZipEntry, preserveStoredMetadata: Boolean = true): ZipEntry {
