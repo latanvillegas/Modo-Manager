@@ -6,6 +6,7 @@ import app.morphe.manager.patcher.logger.Logger
 import app.morphe.manager.patcher.patch.PatchBundle
 import app.morphe.manager.patcher.patch.applyPatchOptions
 import app.morphe.manager.patcher.split.SplitApkPreparer
+import app.morphe.manager.patcher.util.NativePayloadApplier
 import app.morphe.manager.patcher.worker.ProgressEventHandler
 import app.morphe.manager.ui.model.State
 import app.morphe.manager.util.Options
@@ -76,6 +77,16 @@ class CoroutineRuntime(private val context: Context) : Runtime(context) {
 
             try {
                 if (preparation.merged) {
+                    NativePayloadApplier.apply(
+                        apkFile = preparation.file,
+                        selections = selectedPatches.mapNotNull { (uid, patchNames) ->
+                            bundles[uid]?.let { bundle ->
+                                NativePayloadApplier.Selection(bundle, patchNames)
+                            }
+                        },
+                        workspace = preparation.file.parentFile ?: File(cacheDir),
+                        logger = logger,
+                    )
                     onProgress(null, State.COMPLETED, null)
                     onMergedApkReady?.invoke(preparation.file)
                 }
