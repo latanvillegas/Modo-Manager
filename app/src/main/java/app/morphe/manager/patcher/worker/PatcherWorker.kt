@@ -40,6 +40,7 @@ import app.morphe.manager.patcher.util.NativeLibStripper
 import app.morphe.manager.patcher.util.ApkPreflight
 import app.morphe.manager.patcher.util.PatchRunReport
 import app.morphe.manager.patcher.util.PatchStoragePreflight
+import app.morphe.manager.patcher.util.TransactionalApkOutput
 import app.morphe.manager.ui.model.SelectedApp
 import app.morphe.manager.ui.model.State
 import app.morphe.manager.util.*
@@ -548,8 +549,8 @@ class PatcherWorker(
 
             updatePatcherNotification(stepName = signingApkLabel, patchProgress = null)
             val finalOutput = File(args.output)
-            val transactionalOutput = File(finalOutput.parentFile, "${finalOutput.name}.pending")
-            transactionalOutput.delete()
+            TransactionalApkOutput.recover(finalOutput)
+            val transactionalOutput = TransactionalApkOutput.pending(finalOutput)
             try {
                 keystoreManager.sign(patchedApk, transactionalOutput)
 
@@ -566,7 +567,7 @@ class PatcherWorker(
                 }
 
                 if (finalOutput.exists()) {
-                    val backup = File(finalOutput.parentFile, "${finalOutput.name}.previous")
+                    val backup = TransactionalApkOutput.previous(finalOutput)
                     backup.delete()
                     check(finalOutput.renameTo(backup)) {
                         "Could not preserve previous output before transactional commit"
