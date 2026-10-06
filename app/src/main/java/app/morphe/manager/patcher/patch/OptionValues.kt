@@ -7,6 +7,7 @@ package app.morphe.manager.patcher.patch
 
 import app.morphe.manager.patcher.logger.Logger
 import app.morphe.patcher.patch.Patch
+import app.morphe.patcher.patch.Option as PatchOption
 import kotlin.reflect.KType
 
 /**
@@ -74,8 +75,8 @@ fun Map<String, Patch<*>>.applyPatchOptions(
         )
 
         @Suppress("UNCHECKED_CAST")
-        val acceptsValue = (option.validator as (app.morphe.patcher.patch.PatchOption<Any?>, Any?) -> Boolean)
-        if (!acceptsValue(option as app.morphe.patcher.patch.PatchOption<Any?>, coerced)) {
+        val acceptsValue = (option.validator as (PatchOption<Any?>, Any?) -> Boolean)
+        if (!acceptsValue(option as PatchOption<Any?>, coerced)) {
             return@setOption logger.warn(
                 "Option \"$key\" of the \"$patchName\" patch rejected stale or invalid value \"$coerced\""
             )
