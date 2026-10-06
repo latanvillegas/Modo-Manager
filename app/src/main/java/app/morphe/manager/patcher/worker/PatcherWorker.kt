@@ -335,6 +335,8 @@ class PatcherWorker(
                 }
             }
 
+            val inputIsSplitArchive = SplitApkPreparer.isSplitArchive(inputFile)
+
             // Generic preflight: reject structurally invalid APKs before the patcher mutates anything.
             // Split archives are validated after SplitApkPreparer has produced the mono APK.
             if (!inputIsSplitArchive) {
@@ -359,7 +361,6 @@ class PatcherWorker(
 
             val useProcessRuntime = prefs.useProcessRuntime.get()
             val stripNativeLibs = prefs.stripUnusedNativeLibs.get()
-            val inputIsSplitArchive = SplitApkPreparer.isSplitArchive(inputFile)
             // The architecture the patches were selected against, worth a line of its own now
             // that a patch can declare itself unavailable for the one the input carries. Read
             // from the app rather than from [inputFile], which for an installed one is the base
