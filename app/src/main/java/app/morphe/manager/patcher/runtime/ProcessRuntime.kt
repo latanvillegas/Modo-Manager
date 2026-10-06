@@ -187,6 +187,7 @@ class ProcessRuntime(
         onPatchCompleted: suspend (String) -> Unit,
         onProgress: ProgressEventHandler,
         skipUnneededSplits: Boolean,
+        selectedAbi: String?,
         onMergedApkReady: (suspend (File) -> Unit)?,
         onRestart: suspend () -> Unit
     ) = coroutineScope {
