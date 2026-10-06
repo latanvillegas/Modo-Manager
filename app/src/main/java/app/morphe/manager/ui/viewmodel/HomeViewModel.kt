@@ -2206,7 +2206,7 @@ class HomeViewModel(
                 val selectedApp = withContext(Dispatchers.IO) {
                     try {
                         if (installedInfo.isSplit) {
-                            val archive = File(filesystem.uiTempDir, "${packageName}_installed.apks")
+                            val archive = File.createTempFile("installed_", ".apks", filesystem.uiTempDir)
                             createApksArchive(installedInfo, archive)
                             SelectedApp.Local(
                                 packageName = packageName,
@@ -2219,7 +2219,7 @@ class HomeViewModel(
                         } else {
                             val source = File(installedInfo.apkPath)
                             if (!source.exists()) return@withContext null
-                            val tempFile = File(filesystem.uiTempDir, "${packageName}_installed.apk")
+                            val tempFile = File.createTempFile("installed_", ".apk", filesystem.uiTempDir)
                             source.copyTo(tempFile, overwrite = true)
                             SelectedApp.Local(
                                 packageName = packageName,
@@ -2386,7 +2386,7 @@ class HomeViewModel(
                 val selectedApp = withContext(Dispatchers.IO) {
                     try {
                         if (item.info.isSplit) {
-                            val archive = File(filesystem.uiTempDir, "${item.packageName}_installed.apks")
+                            val archive = File.createTempFile("installed_", ".apks", filesystem.uiTempDir)
                             createApksArchive(item.info, archive)
                             SelectedApp.Local(
                                 packageName = item.packageName,
@@ -2399,7 +2399,7 @@ class HomeViewModel(
                         } else {
                             val source = File(item.info.apkPath)
                             if (!source.exists()) return@withContext null
-                            val tempFile = File(filesystem.uiTempDir, "${item.packageName}_installed.apk")
+                            val tempFile = File.createTempFile("installed_", ".apk", filesystem.uiTempDir)
                             source.copyTo(tempFile, overwrite = true)
                             SelectedApp.Local(
                                 packageName = item.packageName,
