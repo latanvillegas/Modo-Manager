@@ -90,8 +90,17 @@ data class PatchBundle(val patchesJar: String) : Parcelable {
      */
     fun nativePayloadManifest(): NativePayloadManifest? = JarFile(patchesJar).use { jar ->
         val manifestEntry = jar.getJarEntry(NATIVE_PAYLOAD_MANIFEST) ?: return null
-        val properties = java.util.Properties().apply {
+        val duplicateKeys = linkedSetOf<String>()
+        val properties = object : java.util.Properties() {
+            override fun put(key: Any, value: Any): Any? {
+                if (containsKey(key)) duplicateKeys += key.toString()
+                return super.put(key, value)
+            }
+        }.apply {
             jar.getInputStream(manifestEntry).use(::load)
+        }
+        require(duplicateKeys.isEmpty()) {
+            "Duplicate native payload manifest fields: ${duplicateKeys.sorted().joinToString(",")}"
         }
         val schemaVersion = properties.getProperty("schemaVersion", "1").toIntOrNull()
             ?: error("Native payload manifest has invalid schemaVersion")
