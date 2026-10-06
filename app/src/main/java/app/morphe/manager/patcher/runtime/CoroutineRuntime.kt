@@ -88,10 +88,13 @@ class CoroutineRuntime(private val context: Context) : Runtime(context) {
                 if (preparation.merged) {
                     NativePayloadApplier.apply(
                         apkFile = preparation.file,
-                        selections = selectedPatches.mapNotNull { (uid, patchNames) ->
-                            bundles[uid]?.let { bundle ->
-                                NativePayloadApplier.Selection(bundle, patchNames)
-                            }
+                        selections = selectedPatches.map { (uid, patchNames) ->
+                            NativePayloadApplier.Selection(
+                                bundle = requireNotNull(bundles[uid]) {
+                                    "Selected patch bundle $uid disappeared before native payload execution"
+                                },
+                                patchNames = patchNames,
+                            )
                         },
                         workspace = preparation.file.parentFile ?: File(cacheDir),
                         logger = logger,
