@@ -3577,6 +3577,7 @@ class HomeViewModel(
         context: Context,
         uri: Uri
     ): ApkLoadResult = withContext(Dispatchers.IO) {
+        var tempFile: File? = null
         try {
             // Copy file to uiTempDir with original extension detection
             val fileName = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
@@ -3585,27 +3586,28 @@ class HomeViewModel(
             } ?: "selected.apk"
 
             val extension = fileName.substringAfterLast('.', "apk").lowercase()
-            val tempFile = File.createTempFile("temp_apk_", ".$extension", filesystem.uiTempDir)
+            tempFile = File.createTempFile("temp_apk_", ".$extension", filesystem.uiTempDir)
+            val selectedFile = tempFile
 
             // openInputStream can return null when the provider is unavailable
             // e.g. Samsung External Storage restricted by Battery Optimization
             val bytesCopied = context.contentResolver.openInputStream(uri)?.use { input ->
-                tempFile.outputStream().use { output -> input.copyTo(output) }
+                selectedFile.outputStream().use { output -> input.copyTo(output) }
             }
             if (bytesCopied == null || bytesCopied == 0L) {
-                tempFile.delete()
+                selectedFile.delete()
                 return@withContext ApkLoadResult.Unreadable
             }
 
             // A split archive is read through its base module
             val packageInfo = SplitApkInspector.withRepresentativeApk(
-                source = tempFile,
+                source = selectedFile,
                 workspace = filesystem.uiTempDir
             ) { apk -> pm.getPackageInfo(apk) }
 
             if (packageInfo == null) {
                 Log.w(tag, "Picked file $fileName could not be parsed as an APK")
-                tempFile.delete()
+                selectedFile.delete()
                 return@withContext ApkLoadResult.NotAnApk
             }
 
@@ -3614,11 +3616,16 @@ class HomeViewModel(
                     packageName = packageInfo.packageName,
                     version = packageInfo.versionName ?: "unknown",
                     versionCode = pm.getVersionCode(packageInfo),
-                    file = tempFile,
+                    file = selectedFile,
                     temporary = true
                 )
             )
         } catch (e: Exception) {
+            tempFile?.let { failedFile ->
+                if (!failedFile.delete() && failedFile.exists()) {
+                    Log.w(tag, "Failed to delete temporary APK after load error: ${failedFile.absolutePath}")
+                }
+            }
             Log.e(tag, "Failed to load APK", e)
             ApkLoadResult.IoError
         }
