@@ -260,7 +260,14 @@ class PatcherWorker(
         // Only delete the temporary input APK after patching if not rooted, since root mount
         // install still needs it. The UI install flow deletes disposable inputs after mounting.
         if (patchingSucceeded && Shell.isAppGrantedRoot() == false) {
-            (args.input as? SelectedApp.Local)?.takeIf { it.temporary }?.file?.delete()
+            (args.input as? SelectedApp.Local)?.takeIf { it.temporary }?.file?.let { temporaryInput ->
+                if (!temporaryInput.delete() && temporaryInput.exists()) {
+                    Log.w(
+                        tag,
+                        "Failed to delete temporary input APK: ${temporaryInput.absolutePath}".logFmt()
+                    )
+                }
+            }
         }
 
         return result
