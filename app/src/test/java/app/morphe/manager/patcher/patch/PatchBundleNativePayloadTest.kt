@@ -1,5 +1,6 @@
 package app.morphe.manager.patcher.patch
 
+import app.morphe.manager.patcher.util.NativePayloadApplier
 import java.io.File
 import java.security.MessageDigest
 import java.util.jar.JarEntry
@@ -127,6 +128,75 @@ class PatchBundleNativePayloadTest {
             val patchBundle = PatchBundle(jar.absolutePath)
             assertEquals(listOf("demo"), patchBundle.nativePayloadsFor(setOf("Demo Patch")).map { it.id })
             assertTrue(patchBundle.nativePayloadsFor(setOf("Other Patch")).isEmpty())
+        } finally {
+            jar.delete()
+        }
+    }
+
+    @Test
+    fun `declared patch name resolves payload for disambiguated selection key`() {
+        val payload = byteArrayOf(7)
+        val hash = sha256(payload)
+        val manifest = """
+            schemaVersion=1
+            capabilities=NATIVE
+            payload.demo.apkEntry=lib/testabi/libdemo.so
+            payload.demo.entry=payload/native/testabi/libdemo.so
+            payload.demo.patchName=Demo Patch
+            payload.demo.originalSha256=0000000000000000000000000000000000000000000000000000000000000000
+            payload.demo.replacementSha256=$hash
+        """.trimIndent().toByteArray()
+        val jar = bundle(mapOf(
+            "META-INF/morphe/native-payloads.properties" to manifest,
+            "payload/native/testabi/libdemo.so" to payload,
+        ))
+        try {
+            val patchBundle = PatchBundle(jar.absolutePath)
+            val selectionKey = "Demo Patch (2)"
+            assertTrue(
+                NativePayloadApplier.resolve(
+                    listOf(NativePayloadApplier.Selection(patchBundle, setOf(selectionKey)))
+                ).isEmpty()
+            )
+
+            val resolved = NativePayloadApplier.resolve(
+                listOf(
+                    NativePayloadApplier.Selection(
+                        bundle = patchBundle,
+                        patchNames = setOf(selectionKey),
+                        declaredPatchNames = setOf("Demo Patch"),
+                    )
+                )
+            )
+            assertEquals(listOf("demo"), resolved.map { (_, nativePayload) -> nativePayload.id })
+        } finally {
+            jar.delete()
+        }
+    }
+
+    @Test
+    fun `legacy selection key still resolves native payload by default`() {
+        val payload = byteArrayOf(8)
+        val hash = sha256(payload)
+        val manifest = """
+            schemaVersion=1
+            capabilities=NATIVE
+            payload.demo.apkEntry=lib/testabi/libdemo.so
+            payload.demo.entry=payload/native/testabi/libdemo.so
+            payload.demo.patchName=Demo Patch
+            payload.demo.originalSha256=0000000000000000000000000000000000000000000000000000000000000000
+            payload.demo.replacementSha256=$hash
+        """.trimIndent().toByteArray()
+        val jar = bundle(mapOf(
+            "META-INF/morphe/native-payloads.properties" to manifest,
+            "payload/native/testabi/libdemo.so" to payload,
+        ))
+        try {
+            val patchBundle = PatchBundle(jar.absolutePath)
+            val resolved = NativePayloadApplier.resolve(
+                listOf(NativePayloadApplier.Selection(patchBundle, setOf("Demo Patch")))
+            )
+            assertEquals(listOf("demo"), resolved.map { (_, nativePayload) -> nativePayload.id })
         } finally {
             jar.delete()
         }
