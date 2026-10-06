@@ -26,6 +26,7 @@ internal data class SessionScratch(
             createTempDirectory: (File, String) -> File = { root, prefix ->
                 Files.createTempDirectory(root.toPath(), prefix).toFile()
             },
+            deleteRecursively: (File) -> Boolean = File::deleteRecursively,
         ): SessionScratch {
             ensureDirectory(patcherCacheRoot, "patcher cache")
             val patcherTemp = createTempDirectory(patcherCacheRoot, "patcher-")
@@ -35,7 +36,13 @@ internal data class SessionScratch(
                 val fileWorkspace = createTempDirectory(fileWorkspaceRoot, "patch-workspace-")
                 return SessionScratch(patcherTemp, fileWorkspace)
             } catch (error: Throwable) {
-                patcherTemp.deleteRecursively()
+                if (!deleteRecursively(patcherTemp) && patcherTemp.exists()) {
+                    error.addSuppressed(
+                        IllegalStateException(
+                            "Could not remove patcher scratch after failed session allocation: ${patcherTemp.path}"
+                        )
+                    )
+                }
                 throw error
             }
         }
