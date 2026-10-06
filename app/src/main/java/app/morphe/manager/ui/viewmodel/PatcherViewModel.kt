@@ -989,7 +989,7 @@ class PatcherViewModel(
                         inputFile?.takeIf { !it.exists() }?.let {
                             Log.d(TAG, "Stale inputFile reference cleared: ${it.name}")
                         }
-                        val destination = File(fs.tempDir, "input-${System.currentTimeMillis()}.apk")
+                        val destination = File.createTempFile("input-", ".apk", fs.tempDir)
                         file.copyTo(destination, overwrite = true)
                         destination
                     }
