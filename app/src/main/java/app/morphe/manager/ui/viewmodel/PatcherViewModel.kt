@@ -993,6 +993,7 @@ class PatcherViewModel(
             },
             onProgress = patchRun::onProgress,
             patchSources = patchSourcesForLog,
+            selectedAbi = input.selectedAbi,
         )
     }
 
