@@ -23,6 +23,12 @@ object NativePayloadApplier {
          */
         val declaredPatchNamesByKey: Map<String, String> =
             patchNames.associateWith { it },
+        /**
+         * All Manager keys available from this bundle for the target app, not just selected ones.
+         * When supplied, schema v1 native binding fails closed if a selected declared name belongs
+         * to more than one available key because the manifest cannot identify which homonym owns it.
+         */
+        val availableDeclaredPatchNamesByKey: Map<String, String> = declaredPatchNamesByKey,
     ) {
         val declaredPatchNames: Set<String>
             get() = patchNames.mapTo(linkedSetOf()) { key ->
@@ -34,24 +40,21 @@ object NativePayloadApplier {
         selections: Collection<Selection>,
         selectedAbi: String? = null,
     ): List<Pair<PatchBundle, PatchBundle.NativePayload>> {
-        selections.forEach { selection ->
-            val selectedDeclaredNames = selection.patchNames.map { key ->
-                selection.declaredPatchNamesByKey[key] ?: key
-            }
-            val duplicateDeclaredNames = selectedDeclaredNames
+        val selected = selections.flatMap { selection ->
+            val payloads = selection.bundle.nativePayloadsFor(selection.declaredPatchNames)
+            val nativeDeclaredNames = payloads.mapTo(hashSetOf()) { it.patchName }
+            val ambiguousNativeNames = selection.availableDeclaredPatchNamesByKey.values
                 .groupingBy { it }
                 .eachCount()
-                .filterValues { it > 1 }
+                .filter { (declaredName, count) ->
+                    count > 1 && declaredName in nativeDeclaredNames
+                }
                 .keys
-            require(duplicateDeclaredNames.isEmpty()) {
+            require(ambiguousNativeNames.isEmpty()) {
                 "Selected native patches are ambiguous by declared name: " +
-                    duplicateDeclaredNames.sorted().joinToString(",")
+                    ambiguousNativeNames.sorted().joinToString(",")
             }
-        }
-
-        val selected = selections.flatMap { selection ->
-            selection.bundle.nativePayloadsFor(selection.declaredPatchNames)
-                .map { payload -> selection.bundle to payload }
+            payloads.map { payload -> selection.bundle to payload }
         }
         val duplicateTargets = selected.groupBy { (_, payload) -> payload.apkEntry }
             .filterValues { it.size > 1 }
