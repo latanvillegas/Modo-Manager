@@ -475,7 +475,7 @@ class PatcherWorker(
                         "Selected patch bundle disappeared during resolution: $uid"
                     },
                     patchNames = patchNames.toSet(),
-                    declaredPatchNames = patchNames.mapTo(mutableSetOf()) { key ->
+                    declaredPatchNamesByKey = patchNames.associateWith { key ->
                         args.declaredPatchNames[uid]?.get(key) ?: key
                     },
                 )
