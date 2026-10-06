@@ -165,11 +165,49 @@ class PatchBundleNativePayloadTest {
                     NativePayloadApplier.Selection(
                         bundle = patchBundle,
                         patchNames = setOf(selectionKey),
-                        declaredPatchNames = setOf("Demo Patch"),
+                        declaredPatchNamesByKey = mapOf(selectionKey to "Demo Patch"),
                     )
                 )
             )
             assertEquals(listOf("demo"), resolved.map { (_, nativePayload) -> nativePayload.id })
+        } finally {
+            jar.delete()
+        }
+    }
+
+    @Test
+    fun `two selected keys collapsing to one declared native patch fail closed`() {
+        val payload = byteArrayOf(6)
+        val hash = sha256(payload)
+        val manifest = """
+            schemaVersion=1
+            capabilities=NATIVE
+            payload.demo.apkEntry=lib/testabi/libdemo.so
+            payload.demo.entry=payload/native/testabi/libdemo.so
+            payload.demo.patchName=Demo Patch
+            payload.demo.originalSha256=0000000000000000000000000000000000000000000000000000000000000000
+            payload.demo.replacementSha256=$hash
+        """.trimIndent().toByteArray()
+        val jar = bundle(mapOf(
+            "META-INF/morphe/native-payloads.properties" to manifest,
+            "payload/native/testabi/libdemo.so" to payload,
+        ))
+        try {
+            val patchBundle = PatchBundle(jar.absolutePath)
+            assertFailsWith<IllegalArgumentException> {
+                NativePayloadApplier.resolve(
+                    listOf(
+                        NativePayloadApplier.Selection(
+                            bundle = patchBundle,
+                            patchNames = setOf("Demo Patch", "Demo Patch (2)"),
+                            declaredPatchNamesByKey = mapOf(
+                                "Demo Patch" to "Demo Patch",
+                                "Demo Patch (2)" to "Demo Patch",
+                            ),
+                        )
+                    )
+                )
+            }
         } finally {
             jar.delete()
         }
