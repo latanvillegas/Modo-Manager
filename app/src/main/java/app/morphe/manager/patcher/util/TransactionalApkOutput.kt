@@ -19,12 +19,19 @@ object TransactionalApkOutput {
             check(finalOutput.delete()) { "Could not remove invalid patched APK before recovery" }
         }
         if (previous.exists()) {
+            if (!previous.isFile || previous.length() == 0L) {
+                check(previous.delete()) { "Could not remove invalid previous patched APK" }
+                return
+            }
             check(previous.renameTo(finalOutput) || runCatching {
                 previous.copyTo(finalOutput, overwrite = false)
                 previous.delete()
                 true
             }.getOrDefault(false)) {
                 "Could not restore previous patched APK"
+            }
+            check(finalOutput.isFile && finalOutput.length() > 0L) {
+                "Restored patched APK is missing or empty"
             }
         }
     }
