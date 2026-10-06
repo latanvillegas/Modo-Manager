@@ -16,6 +16,23 @@ class PatchRunReportTest {
         assertContains(json, "\"inputSha256\":null")
     }
 
+    @Test
+    fun `JSON emits reproducibility metadata`() {
+        val json = report("abc123").copy(
+            managerVersion = "2.0",
+            patcherVersion = "1.14.1",
+            selectedAbi = "arm64-v8a",
+            bundleSources = listOf("uid=7 name=demo version=1 sha256=abcd"),
+            nativePayloads = listOf("web:lib/arm64-v8a/libweb.so"),
+            signingCertificateSha256 = listOf("cafe"),
+            durationMs = 1234,
+        ).toJson()
+        assertContains(json, "\"managerVersion\":\"2.0\"")
+        assertContains(json, "\"selectedAbi\":\"arm64-v8a\"")
+        assertContains(json, "\"nativePayloads\":[\"web:lib/arm64-v8a/libweb.so\"]")
+        assertContains(json, "\"durationMs\":1234")
+    }
+
     private fun report(inputSha256: String?) = PatchRunReport(
         packageName = "app.example",
         version = "1",
