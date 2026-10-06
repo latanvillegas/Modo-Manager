@@ -1,6 +1,7 @@
 package app.morphe.manager.patcher.util
 
 import java.io.File
+import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -10,7 +11,7 @@ import kotlin.test.assertTrue
 class TransactionalApkOutputTest {
     @Test
     fun `restores previous output when final output is missing`() {
-        val dir = createTempDir(prefix = "morphe-transaction-")
+        val dir = createTempDirectory("morphe-transaction-").toFile()
         val output = File(dir, "patched.apk")
         val previous = TransactionalApkOutput.previous(output)
         try {
@@ -26,7 +27,7 @@ class TransactionalApkOutputTest {
 
     @Test
     fun `recovery replaces truncated final output with previous known good APK`() {
-        val dir = createTempDir(prefix = "morphe-transaction-")
+        val dir = createTempDirectory("morphe-transaction-").toFile()
         val output = File(dir, "patched.apk")
         val previous = TransactionalApkOutput.previous(output)
         try {
@@ -44,7 +45,7 @@ class TransactionalApkOutputTest {
 
     @Test
     fun `recovery discards empty previous backup instead of publishing it`() {
-        val dir = createTempDir(prefix = "morphe-transaction-")
+        val dir = createTempDirectory("morphe-transaction-").toFile()
         val output = File(dir, "patched.apk")
         val previous = TransactionalApkOutput.previous(output)
         try {
@@ -61,7 +62,7 @@ class TransactionalApkOutputTest {
 
     @Test
     fun `recovery with truncated final and empty previous leaves no published APK`() {
-        val dir = createTempDir(prefix = "morphe-transaction-")
+        val dir = createTempDirectory("morphe-transaction-").toFile()
         val output = File(dir, "patched.apk")
         val previous = TransactionalApkOutput.previous(output)
         try {
@@ -79,7 +80,7 @@ class TransactionalApkOutputTest {
 
     @Test
     fun `keeps final output and removes stale transaction files`() {
-        val dir = createTempDir(prefix = "morphe-transaction-")
+        val dir = createTempDirectory("morphe-transaction-").toFile()
         val output = File(dir, "patched.apk")
         val previous = TransactionalApkOutput.previous(output)
         val pending = TransactionalApkOutput.pending(output)
@@ -97,7 +98,7 @@ class TransactionalApkOutputTest {
     }
     @Test
     fun `commit replaces output and removes backup`() {
-        val dir = createTempDir(prefix = "morphe-transaction-")
+        val dir = createTempDirectory("morphe-transaction-").toFile()
         val output = File(dir, "patched.apk")
         val pending = TransactionalApkOutput.pending(output)
         try {
@@ -114,7 +115,7 @@ class TransactionalApkOutputTest {
 
     @Test
     fun `empty pending output is rejected before known good output is moved`() {
-        val dir = createTempDir(prefix = "morphe-transaction-")
+        val dir = createTempDirectory("morphe-transaction-").toFile()
         val output = File(dir, "patched.apk")
         val pending = TransactionalApkOutput.pending(output)
         try {
@@ -133,7 +134,7 @@ class TransactionalApkOutputTest {
 
     @Test
     fun `commit creates output when no previous artifact exists`() {
-        val dir = createTempDir(prefix = "morphe-transaction-")
+        val dir = createTempDirectory("morphe-transaction-").toFile()
         val output = File(dir, "patched.apk")
         val pending = TransactionalApkOutput.pending(output)
         try {
