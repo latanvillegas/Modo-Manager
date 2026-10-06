@@ -24,6 +24,7 @@ class CoroutineRuntime(private val context: Context) : Runtime(context) {
         outputFile: String,
         packageName: String,
         selectedPatches: PatchSelection,
+        declaredPatchNames: Map<Int, Map<String, String>>,
         options: Options,
         logger: Logger,
         onPatchCompleted: suspend (String) -> Unit,
@@ -99,6 +100,9 @@ class CoroutineRuntime(private val context: Context) : Runtime(context) {
                                     "Selected patch bundle $uid disappeared before native payload execution"
                                 },
                                 patchNames = patchNames,
+                                declaredPatchNames = patchNames.mapTo(mutableSetOf()) { key ->
+                                    declaredPatchNames[uid]?.get(key) ?: key
+                                },
                             )
                         },
                         workspace = preparation.file.parentFile ?: File(cacheDir),
