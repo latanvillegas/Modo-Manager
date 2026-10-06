@@ -52,10 +52,17 @@ object TransactionalApkOutput {
             }
         }
 
+        val expectedSize = pendingOutput.length()
         try {
             if (!pendingOutput.renameTo(finalOutput)) {
                 pendingOutput.copyTo(finalOutput, overwrite = true)
-                pendingOutput.delete()
+                check(finalOutput.isFile && finalOutput.length() == expectedSize) {
+                    "Committed patched APK size mismatch: expected $expectedSize, got ${finalOutput.length()}"
+                }
+                check(pendingOutput.delete()) { "Could not remove pending APK after successful copy" }
+            }
+            check(finalOutput.isFile && finalOutput.length() == expectedSize) {
+                "Committed patched APK size mismatch: expected $expectedSize, got ${finalOutput.length()}"
             }
             backup.delete()
         } catch (error: Throwable) {
