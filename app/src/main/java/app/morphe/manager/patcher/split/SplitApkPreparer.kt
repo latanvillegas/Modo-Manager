@@ -127,7 +127,13 @@ object SplitApkPreparer {
                 workingDir.deleteRecursively()
             }
         } catch (error: Throwable) {
-            workingDir.deleteRecursively()
+            if (!workingDir.deleteRecursively() && workingDir.exists()) {
+                error.addSuppressed(
+                    IllegalStateException(
+                        "Could not remove split workspace after preparation failure: ${workingDir.path}"
+                    )
+                )
+            }
             throw error
         }
     }
