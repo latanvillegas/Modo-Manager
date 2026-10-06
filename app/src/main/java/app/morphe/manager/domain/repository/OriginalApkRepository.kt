@@ -123,8 +123,11 @@ class OriginalApkRepository(
             existing?.let {
                 val oldFile = File(it.filePath)
                 if (oldFile.exists() && oldFile != sourceFile && oldFile != targetFile) {
-                    oldFile.delete()
-                    Log.d(TAG, "Deleted old original APK for $packageName")
+                    if (oldFile.delete() || !oldFile.exists()) {
+                        Log.d(TAG, "Deleted old original APK for $packageName")
+                    } else {
+                        Log.w(TAG, "Failed to delete superseded original APK: ${oldFile.absolutePath}")
+                    }
                 }
             }
 
@@ -158,8 +161,11 @@ class OriginalApkRepository(
             Log.d(TAG, "Dropped original APK record without a file for ${originalApk.packageName}")
         }
         originalApksDir.listFiles { file -> file.name.endsWith(STAGING_SUFFIX) }.orEmpty().forEach { staged ->
-            staged.delete()
-            Log.d(TAG, "Dropped staged original APK left by an interrupted save: ${staged.name}")
+            if (staged.delete() || !staged.exists()) {
+                Log.d(TAG, "Dropped staged original APK left by an interrupted save: ${staged.name}")
+            } else {
+                Log.w(TAG, "Failed to delete staged original APK left by an interrupted save: ${staged.absolutePath}")
+            }
         }
     }
 
