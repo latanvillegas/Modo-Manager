@@ -1,7 +1,6 @@
 package app.morphe.manager.patcher.util
 
 import java.io.File
-import java.io.RandomAccessFile
 import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
