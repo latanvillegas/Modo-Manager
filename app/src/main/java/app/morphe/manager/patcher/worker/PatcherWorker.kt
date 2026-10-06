@@ -39,6 +39,7 @@ import app.morphe.manager.patcher.runtime.heapLimitMebibytes
 import app.morphe.manager.patcher.split.SplitApkPreparer
 import app.morphe.manager.patcher.util.NativeLibStripper
 import app.morphe.manager.patcher.util.NativeLibraryAlignment
+import app.morphe.manager.patcher.util.NativePayloadApplier
 import app.morphe.manager.patcher.util.ApkPreflight
 import app.morphe.manager.patcher.util.FileHash
 import app.morphe.manager.patcher.util.PatchRunReport
@@ -453,21 +454,17 @@ class PatcherWorker(
 
             // Native payloads are bundle data, never app-specific Manager rules. Resolve only
             // payloads bound to patches selected from that exact bundle.
-            val nativePayloads = args.selectedPatches.flatMap { (uid, patchNames) ->
-                val bundle = patchBundleRepository.bundles.value[uid] ?: return@flatMap emptyList()
-                bundle.nativePayloadsFor(patchNames.toSet()).map { payload -> bundle to payload }
+            val nativeSelections = args.selectedPatches.mapNotNull { (uid, patchNames) ->
+                patchBundleRepository.bundles.value[uid]?.let { bundle ->
+                    NativePayloadApplier.Selection(bundle, patchNames.toSet())
+                }
             }
+            val nativePayloads = NativePayloadApplier.resolve(nativeSelections)
             val nativePayloadBytes = nativePayloads
                 .groupBy({ (bundle, _) -> bundle }, { (_, payload) -> payload })
                 .entries.fold(0L) { total, (bundle, payloads) ->
                     Math.addExact(total, bundle.nativePayloadBytes(payloads))
                 }
-            val duplicateNativeTargets = nativePayloads.groupBy { (_, payload) -> payload.apkEntry }
-                .filterValues { it.size > 1 }
-                .keys
-            check(duplicateNativeTargets.isEmpty()) {
-                "Selected native payloads conflict on APK entries: ${duplicateNativeTargets.joinToString(",")}"
-            }
             // Any ZIP rewrite happens on a private input copy before the patcher. The patcher
             // writes and 16 KiB-aligns its own output afterwards, so replacement/ABI filtering
             // cannot invalidate the alignment of the exported APK.
