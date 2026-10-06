@@ -86,6 +86,7 @@ class CoroutineRuntime(private val context: Context) : Runtime(context) {
                         },
                         workspace = preparation.file.parentFile ?: File(cacheDir),
                         logger = logger,
+                        selectedAbi = selectedAbi,
                     )
                     onProgress(null, State.COMPLETED, null)
                     onMergedApkReady?.invoke(preparation.file)
