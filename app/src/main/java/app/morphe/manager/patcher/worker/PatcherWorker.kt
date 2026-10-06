@@ -41,6 +41,7 @@ import app.morphe.manager.patcher.split.SplitApkPreparer
 import app.morphe.manager.patcher.util.NativeLibStripper
 import app.morphe.manager.patcher.util.NativeLibraryAlignment
 import app.morphe.manager.patcher.util.ApkPreflight
+import app.morphe.manager.patcher.util.FileHash
 import app.morphe.manager.patcher.util.PatchRunReport
 import app.morphe.manager.patcher.util.PatchStoragePreflight
 import app.morphe.manager.patcher.util.TransactionalApkOutput
@@ -652,6 +653,21 @@ class PatcherWorker(
                         .filter { it.severity == ApkPreflight.Severity.WARNING }
                         .map { "${it.code}: ${it.message}" },
                     succeeded = true,
+                    managerVersion = BuildConfig.VERSION_NAME,
+                    patcherVersion = BuildConfig.PATCHER_VERSION,
+                    selectedAbi = args.selectedAbi,
+                    bundleSources = args.selectedPatches.keys.sorted().mapNotNull { uid ->
+                        patchBundleRepository.bundles.value[uid]?.let { bundle ->
+                            val attrs = bundle.manifestAttributes
+                            "uid=$uid name=${attrs?.name ?: "?"} version=${attrs?.version ?: "?"} " +
+                                "sha256=${FileHash.sha256(File(bundle.patchesJar))}"
+                        }
+                    },
+                    nativePayloads = nativePayloads.map { (_, payload) ->
+                        "${payload.id}:${payload.apkEntry}"
+                    }.sorted(),
+                    signingCertificateSha256 = archiveCertificateHashes.sorted(),
+                    durationMs = System.currentTimeMillis() - startTime,
                 )
                 runCatching {
                     report.writeTo(
