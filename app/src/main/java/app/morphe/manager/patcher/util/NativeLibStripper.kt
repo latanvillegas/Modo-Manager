@@ -183,17 +183,45 @@ object NativeLibStripper {
 
     private fun replaceAtomically(apkFile: File, tempFile: File) {
         val backupFile = File(apkFile.parentFile, "${apkFile.name}.native-backup")
-        backupFile.delete()
+        if (backupFile.exists()) {
+            check(backupFile.delete() || !backupFile.exists()) {
+                "Failed to remove stale native rewrite backup: ${backupFile.path}"
+            }
+        }
         check(apkFile.renameTo(backupFile)) { "Failed to preserve original APK before rewrite" }
+
         try {
             if (!tempFile.renameTo(apkFile)) {
                 tempFile.copyTo(apkFile, overwrite = true)
-                tempFile.delete()
+                check(tempFile.delete() || !tempFile.exists()) {
+                    "Failed to remove native rewrite temporary file after copy: ${tempFile.path}"
+                }
             }
-            backupFile.delete()
+            check(apkFile.isFile && apkFile.length() > 0L) {
+                "Native rewrite did not produce a valid APK: ${apkFile.path}"
+            }
+            check(backupFile.delete() || !backupFile.exists()) {
+                "Failed to remove native rewrite backup after successful replacement: ${backupFile.path}"
+            }
         } catch (error: Throwable) {
-            apkFile.delete()
-            backupFile.renameTo(apkFile)
+            try {
+                if (apkFile.exists()) {
+                    check(apkFile.delete() || !apkFile.exists()) {
+                        "Failed to remove incomplete native rewrite before rollback: ${apkFile.path}"
+                    }
+                }
+                if (!backupFile.renameTo(apkFile)) {
+                    backupFile.copyTo(apkFile, overwrite = true)
+                    check(backupFile.delete() || !backupFile.exists()) {
+                        "Failed to remove native rewrite backup after rollback copy: ${backupFile.path}"
+                    }
+                }
+                check(apkFile.isFile && apkFile.length() > 0L) {
+                    "Native rewrite rollback did not restore a valid APK: ${apkFile.path}"
+                }
+            } catch (rollbackError: Throwable) {
+                error.addSuppressed(rollbackError)
+            }
             throw error
         }
     }
