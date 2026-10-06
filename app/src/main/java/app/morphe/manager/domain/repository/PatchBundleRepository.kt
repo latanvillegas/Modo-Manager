@@ -690,10 +690,17 @@ class PatchBundleRepository(
         )
     }
 
+    private fun deleteBundleDirectoryBestEffort(uid: Int) {
+        val directory = directoryOf(uid)
+        if (directory.exists() && !directory.deleteRecursively() && directory.exists()) {
+            Log.w(tag, "Failed to delete patch bundle directory for uid=$uid: ${directory.absolutePath}")
+        }
+    }
+
     suspend fun reset() = dispatchAction("Reset") { state ->
         dao.reset()
         (state as? BundleState.Ready)?.sources?.keys?.forEach {
-            directoryOf(it).deleteRecursively()
+            deleteBundleDirectoryBestEffort(it)
             loadGuard.forget(it)
         }
         doReload()
@@ -860,7 +867,7 @@ class PatchBundleRepository(
             val info = ready.info.toMutableMap()
             bundles.forEach {
                 dao.remove(it.uid)
-                directoryOf(it.uid).deleteRecursively()
+                deleteBundleDirectoryBestEffort(it.uid)
                 loadGuard.forget(it.uid)
                 sources.remove(it.uid)
                 info.remove(it.uid)
@@ -2153,7 +2160,7 @@ class PatchBundleRepository(
                 if (toRemove.isNotEmpty()) {
                     toRemove.forEach { bundle ->
                         dao.remove(bundle.uid)
-                        directoryOf(bundle.uid).deleteRecursively()
+                        deleteBundleDirectoryBestEffort(bundle.uid)
                     }
                     val removedUids = toRemove.map { it.uid }.toSet()
                     removedUids.forEach { uid ->
