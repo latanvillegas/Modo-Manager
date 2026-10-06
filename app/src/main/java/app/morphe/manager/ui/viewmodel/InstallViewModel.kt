@@ -922,7 +922,13 @@ class InstallViewModel : ViewModel(), KoinComponent {
 
                 // Drop only caller-owned temporary inputs; persistent saved originals must survive
                 // for future root mount updates.
-                if (inputIsTemporary) inputFile?.delete()
+                if (inputIsTemporary) {
+                    inputFile?.let { file ->
+                        if (!file.delete() && file.exists()) {
+                            Log.w(TAG, "Failed to delete temporary mount input: ${file.absolutePath}")
+                        }
+                    }
+                }
 
                 // Success
                 handleInstallSuccess(packageName)
