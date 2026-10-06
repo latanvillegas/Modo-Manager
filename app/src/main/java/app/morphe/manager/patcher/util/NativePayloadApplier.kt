@@ -17,18 +17,28 @@ object NativePayloadApplier {
         /** Selection keys as stored by Manager; these may be disambiguated per app. */
         val patchNames: Set<String>,
         /**
-         * Names declared by the bundle for the selected patches. Native payload manifests bind
-         * to these names, never to Manager's disambiguated selection keys.
+         * Selected Manager key -> bundle-declared patch name. Keeping the mapping intact lets us
+         * detect two distinct selected keys that schema v1 would otherwise collapse to one native
+         * payload owner. Legacy callers default to identity names.
          */
-        val declaredPatchNames: Set<String> = patchNames,
-    )
+        val declaredPatchNamesByKey: Map<String, String> =
+            patchNames.associateWith { it },
+    ) {
+        val declaredPatchNames: Set<String>
+            get() = patchNames.mapTo(linkedSetOf()) { key ->
+                declaredPatchNamesByKey[key] ?: key
+            }
+    }
 
     fun resolve(
         selections: Collection<Selection>,
         selectedAbi: String? = null,
     ): List<Pair<PatchBundle, PatchBundle.NativePayload>> {
         selections.forEach { selection ->
-            val duplicateDeclaredNames = selection.declaredPatchNames
+            val selectedDeclaredNames = selection.patchNames.map { key ->
+                selection.declaredPatchNamesByKey[key] ?: key
+            }
+            val duplicateDeclaredNames = selectedDeclaredNames
                 .groupingBy { it }
                 .eachCount()
                 .filterValues { it > 1 }
