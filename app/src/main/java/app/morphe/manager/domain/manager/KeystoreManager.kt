@@ -34,6 +34,11 @@ data class SigningKeyInfo(
     val createdAt: Long?
 )
 
+/** Diagnostic outcome of signing without exposing signer implementation details. */
+data class SigningResult(
+    val repackagedArchive: Boolean,
+)
+
 class KeystoreManager(app: Application, private val prefs: PreferencesManager) {
     companion object Constants {
         /** Default alias and password for the keystore. */
@@ -75,10 +80,11 @@ class KeystoreManager(app: Application, private val prefs: PreferencesManager) {
      * archive was already well-formed, as it is for anything the patcher itself just wrote. So sign
      * directly and fall back to [sanitizeZipIfNeeded] only if the signer rejects the archive itself.
      */
-    suspend fun sign(input: File, output: File) = withContext(Dispatchers.Default) {
+    suspend fun sign(input: File, output: File): SigningResult = withContext(Dispatchers.Default) {
         val alias = prefs.keystoreAlias.get()
         try {
             ApkUtils.signApk(input, output, alias, signingDetails())
+            SigningResult(repackagedArchive = false)
         } catch (e: Exception) {
             if (!e.isMalformedArchive()) throw e
 
@@ -89,6 +95,7 @@ class KeystoreManager(app: Application, private val prefs: PreferencesManager) {
 
             try {
                 ApkUtils.signApk(sanitized, output, alias, signingDetails())
+                SigningResult(repackagedArchive = true)
             } catch (retry: Exception) {
                 // The rejection that sent us down this path is what names the archive as the
                 // problem, so it travels with the failure the user ends up seeing
