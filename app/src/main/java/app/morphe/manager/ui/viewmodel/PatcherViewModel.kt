@@ -463,9 +463,13 @@ class PatcherViewModel(
     }
 
     private val tempDir = savedStateHandle.saveable(key = "tempDir") {
-        fs.uiTempDir.resolve("installer").also {
-            it.deleteRecursively()
-            it.mkdirs()
+        fs.uiTempDir.resolve("installer").also { dir ->
+            check(!dir.exists() || dir.deleteRecursively() || !dir.exists()) {
+                "Could not clear stale installer workspace: ${dir.absolutePath}"
+            }
+            check(dir.mkdirs() || dir.isDirectory) {
+                "Could not create installer workspace: ${dir.absolutePath}"
+            }
         }
     }
 
@@ -1193,7 +1197,11 @@ class PatcherViewModel(
 
     private fun cleanupTemporaryInput() {
         if (input.selectedApp is SelectedApp.Local && input.selectedApp.temporary) {
-            inputFile?.takeIf { it.exists() }?.delete()
+            inputFile?.takeIf { it.exists() }?.let { file ->
+                if (!file.delete() && file.exists()) {
+                    Log.w(TAG, "Failed to delete temporary patch input: ${file.absolutePath}")
+                }
+            }
             inputFile = null
             patchRun.updateSplitRequirement(null)
         }
@@ -1217,7 +1225,9 @@ class PatcherViewModel(
         // This covers the case where the user navigates away before installing/exporting,
         // or after a failed patch. The next PatcherViewModel creation will also deleteRecursively,
         // but doing it here is more prompt and avoids holding ~XX MB until next launch.
-        tempDir.deleteRecursively()
+        if (tempDir.exists() && !tempDir.deleteRecursively() && tempDir.exists()) {
+            Log.w(TAG, "Failed to delete installer workspace: ${tempDir.absolutePath}")
+        }
     }
 
     private companion object {
