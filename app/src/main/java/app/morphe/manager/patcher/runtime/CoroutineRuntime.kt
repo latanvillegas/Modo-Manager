@@ -103,6 +103,9 @@ class CoroutineRuntime(private val context: Context) : Runtime(context) {
                                 declaredPatchNamesByKey = patchNames.associateWith { key ->
                                     declaredPatchNames[uid]?.get(key) ?: key
                                 },
+                                availableDeclaredPatchNamesByKey = requireNotNull(allPatches[uid]) {
+                                    "Selected patch bundle $uid disappeared before native payload validation"
+                                }.mapValues { (_, patch) -> patch.name.orEmpty() },
                             )
                         },
                         workspace = preparation.file.parentFile ?: File(cacheDir),
