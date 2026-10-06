@@ -632,7 +632,7 @@ class PatcherWorker(
             TransactionalApkOutput.recover(finalOutput)
             val transactionalOutput = TransactionalApkOutput.pending(finalOutput)
             try {
-                keystoreManager.sign(patchedApk, transactionalOutput)
+                val signingResult = keystoreManager.sign(patchedApk, transactionalOutput)
 
                 // Signing normally preserves entry offsets, but its malformed-ZIP fallback
                 // repackages the archive. Verify the artifact that will actually be committed.
@@ -672,6 +672,9 @@ class PatcherWorker(
                         )
                     }
                     add("Native library alignment verified at 16 KiB")
+                    if (signingResult.repackagedArchive) {
+                        add("Signing required ZIP archive repackaging fallback")
+                    }
                     add("APK signature, certificate, structure and package metadata verified")
                 }
                 val report = PatchRunReport(
@@ -702,6 +705,7 @@ class PatcherWorker(
                         "${payload.id}:${payload.apkEntry}"
                     }.sorted(),
                     signingCertificateSha256 = archiveCertificateHashes.sorted(),
+                    signingRepackagedArchive = signingResult.repackagedArchive,
                     durationMs = System.currentTimeMillis() - startTime,
                     phaseDurationsMs = mapOf(
                         "preparation" to preparationDurationMs,
