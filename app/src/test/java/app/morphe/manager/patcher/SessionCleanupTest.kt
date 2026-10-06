@@ -16,8 +16,7 @@ class SessionCleanupTest {
         try {
             cleanupAfterConstructionFailure(
                 error = error,
-                first,
-                second,
+                directories = listOf(first, second),
                 deleteRecursively = { false },
             )
 
