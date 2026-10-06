@@ -443,8 +443,17 @@ class ProcessRuntime(
             // Tell app_process to exit on cancellation. After normal completion finished()
             // already called exit(), so runCatching swallows the DeadObjectException
             runCatching { binderRef.get()?.exit() }
-            // Always clean up the temporary merged file regardless of success or failure
-            mergedFile?.takeIf { it.exists() }?.delete()
+            // Always clean up the temporary merged file regardless of success or failure.
+            // Cleanup is diagnostic only: residue must not replace a successful patch result or
+            // mask the failure/cancellation that brought us through this finally block.
+            mergedFile?.takeIf { it.exists() }?.let { temporaryMergedFile ->
+                if (!temporaryMergedFile.delete() && temporaryMergedFile.exists()) {
+                    Log.w(
+                        tag,
+                        "Failed to delete temporary merged process APK: ${temporaryMergedFile.absolutePath}"
+                    )
+                }
+            }
         }
     }
 
