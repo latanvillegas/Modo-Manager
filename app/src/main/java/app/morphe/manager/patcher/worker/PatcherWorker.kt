@@ -500,7 +500,11 @@ class PatcherWorker(
             }
 
             if (stripNativeLibs && !inputIsSplitArchive) {
-                NativeLibStripper.strip(patchedApk, args.logger)
+                // An explicit output ABI is authoritative. Do not re-resolve against the
+                // current device here or a manually selected ABI could be stripped back out.
+                val outputAbis = args.selectedAbi?.let(::listOf)
+                    ?: Build.SUPPORTED_ABIS.filter { it.isNotBlank() }
+                NativeLibStripper.strip(patchedApk, outputAbis, args.logger)
             }
 
             // Validate the patcher's unsigned output before signing or exporting it.
