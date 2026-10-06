@@ -36,6 +36,7 @@ import app.morphe.manager.patcher.patch.PatchSourceRef
 import app.morphe.manager.patcher.runtime.ProcessRuntime
 import app.morphe.manager.patcher.runtime.lowerMemoryLimit
 import app.morphe.manager.patcher.split.SplitApkPreparer
+import app.morphe.manager.patcher.util.NativeLibStripper
 import app.morphe.manager.patcher.worker.PatcherWorker
 import app.morphe.manager.ui.model.*
 import app.morphe.manager.ui.model.navigation.Patcher
@@ -166,12 +167,12 @@ class PatcherViewModel(
                 if (SplitApkPreparer.isSplitArchive(selected.file)) {
                     SplitApkPreparer.splitArchiveAbis(selected.file)
                 } else {
-                    app.morphe.manager.patcher.util.NativeLibStripper.extractAbisFromApk(selected.file)
+                    NativeLibStripper.extractAbisFromApk(selected.file)
                 }
             is SelectedApp.Installed -> {
                 val info = pm.getPackageInfo(selected.packageName)?.applicationInfo
                 (listOfNotNull(info?.sourceDir) + info?.splitSourceDirs.orEmpty())
-                    .flatMap { app.morphe.manager.patcher.util.NativeLibStripper.extractAbisFromApk(File(it)) }
+                    .flatMap { NativeLibStripper.extractAbisFromApk(File(it)) }
                     .distinct()
             }
         }
