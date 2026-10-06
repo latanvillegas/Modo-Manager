@@ -45,14 +45,22 @@ class Session(
     private val fileWorkspace =
         Files.createTempDirectory(fileWorkspaceRoot.toPath(), "patch-workspace-").toFile()
 
-    private val patcher = Patcher(
-        PatcherConfig(
-            apkFile = input,
-            temporaryFilesPath = tempDir,
-            frameworkFileDirectory = frameworkDir,
-            fileWorkspacePath = fileWorkspace
+    private val patcher = try {
+        Patcher(
+            PatcherConfig(
+                apkFile = input,
+                temporaryFilesPath = tempDir,
+                frameworkFileDirectory = frameworkDir,
+                fileWorkspacePath = fileWorkspace
+            )
         )
-    )
+    } catch (error: Throwable) {
+        // A constructor failure means the caller never receives a Session and therefore cannot
+        // invoke close(); reclaim the scratch allocated above before propagating the real cause.
+        tempDir.deleteRecursively()
+        fileWorkspace.deleteRecursively()
+        throw error
+    }
 
     private suspend fun Patcher.applyPatchesVerbose(selectedPatches: PatchList) {
         updateProgress(state = State.RUNNING)
