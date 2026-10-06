@@ -86,6 +86,11 @@ class CoroutineRuntime(private val context: Context) : Runtime(context) {
 
             try {
                 if (preparation.merged) {
+                    // Save the clean mono-APK before any selected native payload mutates the
+                    // working copy. Repatching this saved original must still satisfy each
+                    // payload's originalSha256 contract.
+                    onMergedApkReady?.invoke(preparation.file)
+
                     NativePayloadApplier.apply(
                         apkFile = preparation.file,
                         selections = selectedPatches.map { (uid, patchNames) ->
@@ -101,7 +106,6 @@ class CoroutineRuntime(private val context: Context) : Runtime(context) {
                         selectedAbi = selectedAbi,
                     )
                     onProgress(null, State.COMPLETED, null)
-                    onMergedApkReady?.invoke(preparation.file)
                 }
 
                 Session(
