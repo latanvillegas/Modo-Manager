@@ -516,6 +516,13 @@ class PatcherWorker(
             check(unsignedPreflight.canPatch) {
                 "Patched APK failed structural postflight; output was not exported"
             }
+            args.selectedAbi?.let { requestedAbi ->
+                val outputAbis = unsignedPreflight.abis
+                check(requestedAbi in outputAbis) {
+                    "Patched APK does not contain selected ABI $requestedAbi; output ABIs=${outputAbis.joinToString(",")}"
+                }
+                args.logger.info("[Postflight] Selected ABI verified: $requestedAbi")
+            }
 
             updatePatcherNotification(stepName = signingApkLabel, patchProgress = null)
             val finalOutput = File(args.output)
