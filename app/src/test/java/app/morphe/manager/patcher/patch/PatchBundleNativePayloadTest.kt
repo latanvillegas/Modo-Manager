@@ -2,6 +2,7 @@ package app.morphe.manager.patcher.patch
 
 import app.morphe.manager.patcher.util.NativePayloadApplier
 import java.io.File
+import kotlin.io.path.createTempDirectory
 import java.security.MessageDigest
 import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
@@ -39,7 +40,7 @@ class PatchBundleNativePayloadTest {
             "META-INF/morphe/native-payloads.properties" to manifest,
             "payload/native/testabi/libdemo.so" to payload,
         ))
-        val out = createTempDir(prefix = "morphe-native-payload-")
+        val out = createTempDirectory("morphe-native-payload-").toFile()
         try {
             val patchBundle = PatchBundle(jar.absolutePath)
             val parsed = patchBundle.nativePayloadManifest()!!
@@ -217,7 +218,7 @@ class PatchBundleNativePayloadTest {
             "META-INF/morphe/native-payloads.properties" to manifest,
             "payload/native/testabi/libdemo.so" to payload,
         ))
-        val out = createTempDir(prefix = "morphe-native-payload-bad-")
+        val out = createTempDirectory("morphe-native-payload-bad-").toFile()
         try {
             val patchBundle = PatchBundle(jar.absolutePath)
             val parsed = patchBundle.nativePayloadManifest()!!.payloads.single()
