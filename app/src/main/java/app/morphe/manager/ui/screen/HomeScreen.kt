@@ -262,6 +262,16 @@ fun HomeScreen(
 
     InstallerFlowDialogs(installViewModel = installViewModel)
 
+    // Output architecture is resolved before navigation to PatcherScreen, so preflight/Worker
+    // cannot start until the user explicitly chooses automatic, a concrete ABI, or Universal.
+    homeViewModel.abiSelection?.let { state ->
+        AbiSelectionDialog(
+            state = state,
+            onSelect = homeViewModel::confirmAbiSelection,
+            onDismiss = homeViewModel::dismissAbiSelection
+        )
+    }
+
     // Pre-patching mode selection dialog for root-capable devices.
     // This dialog must appear before patching starts because the patch mode determines
     // which patches are applied.
