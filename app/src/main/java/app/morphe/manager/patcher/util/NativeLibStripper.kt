@@ -35,7 +35,7 @@ object NativeLibStripper {
             val allowedAbis = preferredAbi?.let { setOf(it) } ?: supportedAbis.toSet()
 
             if (preferredAbi != null) {
-                Log.i(TAG, "Preserving native libraries for ABI $preferredAbi")
+                logInfo(logger, "Preserving native libraries for ABI $preferredAbi")
             }
 
             val tempFile = File(apkFile.parentFile, "${apkFile.nameWithoutExtension}-abi-stripped.apk")
@@ -73,8 +73,7 @@ object NativeLibStripper {
             if (removedEntries > 0) {
                 replaceAtomically(apkFile, tempFile)
                 val message = "Stripped native libraries for unsupported ABIs (removed $removedEntries entries)"
-                Log.i(TAG, message)
-                logger?.info(message)
+                logInfo(logger, message)
                 true
             } else {
                 tempFile.delete()
@@ -165,13 +164,21 @@ object NativeLibStripper {
             replaceAtomically(apkFile, tempFile)
             val message = "Replaced native library ${replacement.apkEntry} " +
                 "(original=$originalHash replacement=$writtenHash)"
-            Log.i(TAG, message)
-            logger?.info(message)
+            logInfo(logger, message)
             true
         } catch (error: Throwable) {
             tempFile.delete()
             throw error
         }
+    }
+
+    /**
+     * Android's Log methods are runtime facilities; local JVM tests use throwing stubs.
+     * Patch logging remains authoritative, while platform logging is diagnostic only.
+     */
+    private fun logInfo(logger: Logger?, message: String) {
+        logger?.info(message)
+        runCatching { Log.i(TAG, message) }
     }
 
     private fun replaceAtomically(apkFile: File, tempFile: File) {
