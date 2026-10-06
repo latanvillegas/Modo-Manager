@@ -17,12 +17,7 @@ object NativePayloadApplier {
         val patchNames: Set<String>,
     )
 
-    suspend fun apply(
-        apkFile: File,
-        selections: Collection<Selection>,
-        workspace: File,
-        logger: Logger,
-    ): List<PatchBundle.NativePayload> {
+    fun resolve(selections: Collection<Selection>): List<Pair<PatchBundle, PatchBundle.NativePayload>> {
         val selected = selections.flatMap { selection ->
             selection.bundle.nativePayloadsFor(selection.patchNames)
                 .map { payload -> selection.bundle to payload }
@@ -33,7 +28,16 @@ object NativePayloadApplier {
         require(duplicateTargets.isEmpty()) {
             "Selected native payloads conflict on APK entries: ${duplicateTargets.sorted().joinToString(",")}"
         }
+        return selected
+    }
 
+    suspend fun apply(
+        apkFile: File,
+        selections: Collection<Selection>,
+        workspace: File,
+        logger: Logger,
+    ): List<PatchBundle.NativePayload> {
+        val selected = resolve(selections)
         if (selected.isEmpty()) return emptyList()
 
         val payloadDir = workspace.resolve("native-payloads").also {
