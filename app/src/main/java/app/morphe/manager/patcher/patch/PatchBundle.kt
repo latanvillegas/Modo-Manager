@@ -80,6 +80,7 @@ data class PatchBundle(val patchesJar: String) : Parcelable {
      * null and continue to work unchanged.
      *
      * Format: META-INF/morphe/native-payloads.properties
+     * schemaVersion=1
      * capabilities=DEX,RESOURCE,NATIVE
      * payload.<id>.apkEntry=lib/<abi>/<name>.so
      * payload.<id>.entry=payload/native/<abi>/<name>.so
@@ -92,6 +93,19 @@ data class PatchBundle(val patchesJar: String) : Parcelable {
         val properties = java.util.Properties().apply {
             jar.getInputStream(manifestEntry).use(::load)
         }
+        val schemaVersion = properties.getProperty("schemaVersion", "1").toIntOrNull()
+            ?: error("Native payload manifest has invalid schemaVersion")
+        require(schemaVersion == 1) {
+            "Unsupported native payload manifest schemaVersion: $schemaVersion"
+        }
+        val allowedTopLevelKeys = setOf("schemaVersion", "capabilities")
+        val payloadKey = Regex("""payload\.([^.]+)\.(apkEntry|entry|patchName|originalSha256|replacementSha256)""")
+        properties.stringPropertyNames().forEach { key ->
+            require(key in allowedTopLevelKeys || payloadKey.matches(key)) {
+                "Unknown native payload manifest field: $key"
+            }
+        }
+
         val capabilityNames = properties.getProperty("capabilities").orEmpty()
             .split(',').map { it.trim() }.filter { it.isNotEmpty() }
         val capabilities = capabilityNames.map { raw ->
@@ -99,7 +113,6 @@ data class PatchBundle(val patchesJar: String) : Parcelable {
                 .getOrElse { error("Unknown patch bundle capability: $raw") }
         }.toSet()
 
-        val payloadKey = Regex("""payload\.([^.]+)\.(apkEntry|entry|patchName|originalSha256|replacementSha256)""")
         val ids = properties.stringPropertyNames()
             .mapNotNull { key -> payloadKey.matchEntire(key)?.groupValues?.get(1) }
             .distinct().sorted()
