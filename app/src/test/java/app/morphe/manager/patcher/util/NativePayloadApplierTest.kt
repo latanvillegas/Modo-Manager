@@ -4,6 +4,7 @@ import app.morphe.manager.patcher.logger.LogLevel
 import app.morphe.manager.patcher.logger.Logger
 import app.morphe.manager.patcher.patch.PatchBundle
 import java.io.File
+import kotlin.io.path.createTempDirectory
 import java.io.FileOutputStream
 import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
@@ -17,7 +18,7 @@ class NativePayloadApplierTest {
         val first = bundle("one")
         val second = bundle("two")
         val apk = File.createTempFile("native-payload-target-", ".apk")
-        val workspace = createTempDir(prefix = "native-payload-workspace-")
+        val workspace = createTempDirectory("native-payload-workspace-").toFile()
         try {
             apk.writeBytes(byteArrayOf(1, 2, 3))
             assertFailsWith<IllegalArgumentException> {
