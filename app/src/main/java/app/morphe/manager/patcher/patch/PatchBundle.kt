@@ -8,6 +8,8 @@ import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
 import java.io.File
 import java.io.IOException
+import java.io.FileOutputStream
+import java.security.MessageDigest
 import java.util.jar.JarFile
 
 @Parcelize
@@ -55,6 +57,112 @@ data class PatchBundle(val patchesJar: String) : Parcelable {
         val license: String?,
         val patcherVersion: String?
     )
+
+
+    enum class Capability { DEX, RESOURCE, NATIVE }
+
+    data class NativePayload(
+        val id: String,
+        val apkEntry: String,
+        val payloadEntry: String,
+        val originalSha256: String,
+        val replacementSha256: String,
+    )
+
+    data class NativePayloadManifest(
+        val capabilities: Set<Capability>,
+        val payloads: List<NativePayload>,
+    )
+
+    /**
+     * Optional native payload manifest carried inside the bundle. Legacy bundles simply return
+     * null and continue to work unchanged.
+     *
+     * Format: META-INF/morphe/native-payloads.properties
+     * capabilities=DEX,RESOURCE,NATIVE
+     * payload.<id>.apkEntry=lib/<abi>/<name>.so
+     * payload.<id>.entry=payload/native/<abi>/<name>.so
+     * payload.<id>.originalSha256=<64 hex>
+     * payload.<id>.replacementSha256=<64 hex>
+     */
+    fun nativePayloadManifest(): NativePayloadManifest? = JarFile(patchesJar).use { jar ->
+        val manifestEntry = jar.getJarEntry(NATIVE_PAYLOAD_MANIFEST) ?: return null
+        val properties = java.util.Properties().apply {
+            jar.getInputStream(manifestEntry).use(::load)
+        }
+        val capabilities = properties.getProperty("capabilities").orEmpty()
+            .split(',').mapNotNull { raw ->
+                raw.trim().takeIf { it.isNotEmpty() }?.let {
+                    runCatching { Capability.valueOf(it.uppercase()) }.getOrNull()
+                }
+            }.toSet()
+
+        val ids = properties.stringPropertyNames()
+            .mapNotNull { key -> Regex("""payload\.([^.]+)\.apkEntry""").matchEntire(key)?.groupValues?.get(1) }
+            .distinct().sorted()
+
+        val payloads = ids.map { id ->
+            fun required(suffix: String) = properties.getProperty("payload.$id.$suffix")
+                ?.takeIf { it.isNotBlank() }
+                ?: error("Native payload $id is missing $suffix")
+            NativePayload(
+                id = id,
+                apkEntry = required("apkEntry"),
+                payloadEntry = required("entry"),
+                originalSha256 = requiredHash(required("originalSha256"), id, "originalSha256"),
+                replacementSha256 = requiredHash(required("replacementSha256"), id, "replacementSha256"),
+            )
+        }
+        if (payloads.isNotEmpty() && Capability.NATIVE !in capabilities) {
+            error("Bundle declares native payloads without NATIVE capability")
+        }
+        NativePayloadManifest(capabilities, payloads)
+    }
+
+    /**
+     * Extracts one declared payload after verifying its bytes. Paths are never trusted as
+     * filesystem paths; the payload is read only as a JAR entry and copied to [directory].
+     */
+    fun extractNativePayload(payload: NativePayload, directory: File): File = JarFile(patchesJar).use { jar ->
+        require(payload.payloadEntry.startsWith("payload/native/") && !payload.payloadEntry.contains("..")) {
+            "Unsafe native payload entry: ${payload.payloadEntry}"
+        }
+        val entry = jar.getJarEntry(payload.payloadEntry)
+            ?: error("Bundle is missing native payload ${payload.payloadEntry}")
+        require(!entry.isDirectory) { "Native payload is a directory: ${payload.payloadEntry}" }
+
+        directory.mkdirs()
+        val target = File(directory, "${payload.id}.so")
+        jar.getInputStream(entry).use { input ->
+            FileOutputStream(target).use { output -> input.copyTo(output) }
+        }
+        val actual = sha256(target)
+        check(actual.equals(payload.replacementSha256, ignoreCase = true)) {
+            "Native payload SHA-256 mismatch for ${payload.id}: expected " +
+                "${payload.replacementSha256}, got $actual"
+        }
+        target
+    }
+
+    private fun requiredHash(value: String, id: String, field: String): String {
+        require(value.matches(Regex("[0-9a-fA-F]{64}"))) {
+            "Native payload $id has invalid $field"
+        }
+        return value.lowercase()
+    }
+
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().buffered().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read == -1) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
 
     object Loader {
         private fun loadBundle(bundle: PatchBundle): Collection<Patch<*>> {
@@ -117,4 +225,8 @@ data class PatchBundle(val patchesJar: String) : Parcelable {
             }
         }
     }
+    companion object {
+        private const val NATIVE_PAYLOAD_MANIFEST = "META-INF/morphe/native-payloads.properties"
+    }
 }
+
