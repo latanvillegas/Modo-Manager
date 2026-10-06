@@ -13,6 +13,7 @@ import app.morphe.manager.patcher.Session
 import app.morphe.manager.patcher.logger.LogLevel
 import app.morphe.manager.patcher.logger.Logger
 import app.morphe.manager.patcher.patch.PatchBundle
+import app.morphe.manager.patcher.patch.PatchSelectionValidator
 import app.morphe.manager.patcher.patch.applyPatchOptions
 import app.morphe.manager.patcher.runtime.ProcessRuntime
 import app.morphe.manager.patcher.runtime.ResourceMonitor
@@ -69,7 +70,13 @@ class PatcherProcess(private val context: Context) : IPatcherProcess.Stub() {
 
             val allPatches = PatchBundle.Loader.patches(parameters.configurations.map { it.bundle }, parameters.packageName)
             val patchList = parameters.configurations.flatMap { config ->
-                val bundlePatches = allPatches[config.bundle] ?: return@flatMap emptyList()
+                val bundlePatches = allPatches[config.bundle]
+                    ?: throw IllegalArgumentException("Patch bundle ${config.bundle.patchesJar} failed to load")
+                PatchSelectionValidator.requireAvailable(
+                    bundleLabel = config.bundle.patchesJar,
+                    requested = config.patches,
+                    available = bundlePatches.keys,
+                )
 
                 bundlePatches.applyPatchOptions(config.options, logger)
 
