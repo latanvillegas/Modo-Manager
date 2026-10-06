@@ -48,12 +48,15 @@ object TransactionalApkOutput {
         } catch (error: Throwable) {
             finalOutput.delete()
             if (backup.exists()) {
-                check(backup.renameTo(finalOutput) || runCatching {
+                val restored = backup.renameTo(finalOutput) || runCatching {
                     backup.copyTo(finalOutput, overwrite = true)
                     backup.delete()
                     true
-                }.getOrDefault(false)) {
-                    "Could not restore previous patched APK after failed commit"
+                }.getOrDefault(false)
+                if (!restored) {
+                    error.addSuppressed(
+                        IllegalStateException("Could not restore previous patched APK after failed commit")
+                    )
                 }
             }
             throw error
