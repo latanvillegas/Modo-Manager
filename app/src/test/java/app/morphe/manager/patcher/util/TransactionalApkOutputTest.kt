@@ -25,6 +25,24 @@ class TransactionalApkOutputTest {
     }
 
     @Test
+    fun `recovery replaces truncated final output with previous known good APK`() {
+        val dir = createTempDir(prefix = "morphe-transaction-")
+        val output = File(dir, "patched.apk")
+        val previous = TransactionalApkOutput.previous(output)
+        try {
+            output.createNewFile()
+            previous.writeText("known-good")
+
+            TransactionalApkOutput.recover(output)
+
+            assertEquals("known-good", output.readText())
+            assertFalse(previous.exists())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `keeps final output and removes stale transaction files`() {
         val dir = createTempDir(prefix = "morphe-transaction-")
         val output = File(dir, "patched.apk")
