@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
+import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
@@ -14,6 +15,13 @@ import java.util.zip.ZipOutputStream
 
 object NativeLibStripper {
     private const val TAG = "Morphe NativeLibStripper"
+
+    data class NativeReplacement(
+        val apkEntry: String,
+        val payload: File,
+        val expectedOriginalSha256: String,
+        val expectedReplacementSha256: String,
+    )
 
     suspend fun strip(apkFile: File, logger: Logger? = null): Boolean =
         strip(apkFile, Build.SUPPORTED_ABIS.filter { it.isNotBlank() }, logger)
@@ -62,11 +70,7 @@ object NativeLibStripper {
             }
 
             if (removedEntries > 0) {
-                if (!apkFile.delete()) {
-                    Log.w(TAG, "Failed to delete original APK before stripping ABIs")
-                }
-                tempFile.copyTo(apkFile, overwrite = true)
-                tempFile.delete()
+                replaceAtomically(apkFile, tempFile)
                 val message = "Stripped native libraries for unsupported ABIs (removed $removedEntries entries)"
                 Log.i(TAG, message)
                 logger?.info(message)
@@ -77,12 +81,129 @@ object NativeLibStripper {
             }
         }
 
+    /**
+     * Replaces one native APK entry only when both the original and replacement payloads match
+     * their declared SHA-256 values. The APK is left untouched if any preflight check fails.
+     */
+    suspend fun replaceNativeLibrary(
+        apkFile: File,
+        replacement: NativeReplacement,
+        logger: Logger? = null,
+    ): Boolean = withContext(Dispatchers.IO) {
+        require(replacement.apkEntry.startsWith("lib/") && replacement.apkEntry.endsWith(".so")) {
+            "Native replacement path must be lib/<abi>/<name>.so: ${replacement.apkEntry}"
+        }
+        require(replacement.payload.isFile) {
+            "Native replacement payload does not exist: ${replacement.payload}"
+        }
+
+        val replacementHash = sha256(replacement.payload.inputStream())
+        require(replacementHash.equals(replacement.expectedReplacementSha256, ignoreCase = true)) {
+            "Replacement SHA-256 mismatch for ${replacement.apkEntry}: expected " +
+                "${replacement.expectedReplacementSha256}, got $replacementHash"
+        }
+
+        val originalHash = ZipFile(apkFile).use { zip ->
+            val entry = zip.getEntry(replacement.apkEntry)
+                ?: error("APK does not contain native library ${replacement.apkEntry}")
+            zip.getInputStream(entry).use(::sha256)
+        }
+        require(originalHash.equals(replacement.expectedOriginalSha256, ignoreCase = true)) {
+            "Original SHA-256 mismatch for ${replacement.apkEntry}: expected " +
+                "${replacement.expectedOriginalSha256}, got $originalHash"
+        }
+
+        val tempFile = File(apkFile.parentFile, "${apkFile.nameWithoutExtension}-native-replaced.apk")
+        var replaced = false
+        try {
+            ZipInputStream(apkFile.inputStream().buffered()).use { zis ->
+                ZipOutputStream(tempFile.outputStream().buffered()).use { zos ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    var entry = zis.nextEntry
+                    while (entry != null) {
+                        val newEntry = cloneEntry(entry, preserveStoredMetadata = entry.name != replacement.apkEntry)
+                        zos.putNextEntry(newEntry)
+                        if (!entry.isDirectory) {
+                            if (entry.name == replacement.apkEntry) {
+                                replacement.payload.inputStream().buffered().use { input ->
+                                    input.copyTo(zos)
+                                }
+                                replaced = true
+                            } else {
+                                while (true) {
+                                    val read = zis.read(buffer)
+                                    if (read == -1) break
+                                    zos.write(buffer, 0, read)
+                                }
+                            }
+                        }
+                        zos.closeEntry()
+                        zis.closeEntry()
+                        entry = zis.nextEntry
+                    }
+                }
+            }
+
+            check(replaced) { "Native library disappeared while rewriting APK: ${replacement.apkEntry}" }
+
+            val writtenHash = ZipFile(tempFile).use { zip ->
+                val entry = zip.getEntry(replacement.apkEntry)
+                    ?: error("Rewritten APK is missing ${replacement.apkEntry}")
+                zip.getInputStream(entry).use(::sha256)
+            }
+            check(writtenHash.equals(replacement.expectedReplacementSha256, ignoreCase = true)) {
+                "Post-write SHA-256 mismatch for ${replacement.apkEntry}: expected " +
+                    "${replacement.expectedReplacementSha256}, got $writtenHash"
+            }
+
+            replaceAtomically(apkFile, tempFile)
+            val message = "Replaced native library ${replacement.apkEntry} " +
+                "(original=$originalHash replacement=$writtenHash)"
+            Log.i(TAG, message)
+            logger?.info(message)
+            true
+        } catch (error: Throwable) {
+            tempFile.delete()
+            throw error
+        }
+    }
+
+    private fun replaceAtomically(apkFile: File, tempFile: File) {
+        val backupFile = File(apkFile.parentFile, "${apkFile.name}.native-backup")
+        backupFile.delete()
+        check(apkFile.renameTo(backupFile)) { "Failed to preserve original APK before rewrite" }
+        try {
+            if (!tempFile.renameTo(apkFile)) {
+                tempFile.copyTo(apkFile, overwrite = true)
+                tempFile.delete()
+            }
+            backupFile.delete()
+        } catch (error: Throwable) {
+            apkFile.delete()
+            backupFile.renameTo(apkFile)
+            throw error
+        }
+    }
+
+    private fun sha256(input: InputStream): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        input.use { stream ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val read = stream.read(buffer)
+                if (read == -1) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
     private fun shouldKeepZipEntry(name: String, allowedAbis: Set<String>): Boolean {
         val abi = extractAbiFromEntry(name) ?: return true
         return abi in allowedAbis
     }
 
-    private fun cloneEntry(entry: ZipEntry): ZipEntry {
+    private fun cloneEntry(entry: ZipEntry, preserveStoredMetadata: Boolean = true): ZipEntry {
         val clone = ZipEntry(entry.name)
         clone.time = entry.time
         clone.comment = entry.comment
@@ -92,15 +213,20 @@ object NativeLibStripper {
             entry.lastAccessTime?.let { clone.lastAccessTime = it }
             entry.lastModifiedTime?.let { clone.lastModifiedTime = it }
         } catch (_: Exception) {
-            // Ignore metadata failures
+            // Ignore metadata failures.
         }
 
         when (entry.method) {
             ZipEntry.STORED -> {
-                clone.method = ZipEntry.STORED
-                if (entry.size >= 0) clone.size = entry.size
-                if (entry.compressedSize >= 0) clone.compressedSize = entry.compressedSize
-                clone.crc = entry.crc
+                if (preserveStoredMetadata) {
+                    clone.method = ZipEntry.STORED
+                    if (entry.size >= 0) clone.size = entry.size
+                    if (entry.compressedSize >= 0) clone.compressedSize = entry.compressedSize
+                    clone.crc = entry.crc
+                } else {
+                    // Replacement bytes have different size/CRC, so let ZipOutputStream recompute.
+                    clone.method = ZipEntry.DEFLATED
+                }
             }
 
             ZipEntry.DEFLATED -> clone.method = ZipEntry.DEFLATED
@@ -128,14 +254,6 @@ object NativeLibStripper {
             }
         }.getOrDefault(emptyList())
 
-    /**
-     * The same answer as [extractAbisFromApk] for an APK that arrives on [stream], which is how
-     * a module of a split archive is reached when it has no file of its own to open.
-     *
-     * Streaming has no central directory to consult, so the walk ends with the run of lib/
-     * entries every build tool writes them as, rather than inflating the whole APK behind it.
-     * An APK that turns out unreadable is answered by whatever it yielded up to that point.
-     */
     fun extractAbisFromStream(stream: InputStream): List<String> {
         val abis = LinkedHashSet<String>()
         var insideLibs = false
@@ -158,13 +276,6 @@ object NativeLibStripper {
         return abis.toList()
     }
 
-    /**
-     * The one ABI a run keeps out of [abisInApk], which is the first of [supportedAbis] the APK
-     * has anything for. Null when it carries nothing the device runs.
-     *
-     * Public because it is also the answer to which architecture the output is built for, the
-     * one ApkArchitectureResolver reports to patches that declare availability against it.
-     */
     fun preferredAbi(abisInApk: Set<String>, supportedAbis: List<String>): String? =
         supportedAbis.firstOrNull { it in abisInApk }
 
