@@ -785,8 +785,11 @@ class PatcherViewModel(
         if (existingApp != null && existingApp.version != finalVersion) {
             val oldFile = fs.getPatchedAppFile(finalPackageName, existingApp.version)
             if (oldFile.exists()) {
-                oldFile.delete()
-                Log.d(TAG, "Deleted old patched app file: ${oldFile.name}")
+                if (oldFile.delete() || !oldFile.exists()) {
+                    Log.d(TAG, "Deleted old patched app file: ${oldFile.name}")
+                } else {
+                    Log.w(TAG, "Failed to delete superseded patched app file: ${oldFile.absolutePath}")
+                }
             }
         }
 
