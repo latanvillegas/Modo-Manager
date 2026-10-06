@@ -645,6 +645,14 @@ class PatcherViewModel(
             patchOptionsPrefs.exportPatchOptions(packageName)
         }.restrictTo(input.selectedPatches)
 
+        input.selectedAbi?.let { requestedAbi ->
+            val abis = availableAbis()
+            require(requestedAbi in abis) {
+                "Selected ABI $requestedAbi is not present in the input; available=${abis.joinToString(",")}"
+            }
+            ApkArchitectureResolver.ofSelected(abis, requestedAbi)
+        }
+
         val pathFailures = withContext(Dispatchers.IO) { validateOptionPaths(optionsToValidate) }
         if (pathFailures.isNotEmpty()) {
             inaccessibleOptionPaths = InaccessibleOptionPathsState(
