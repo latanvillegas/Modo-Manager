@@ -354,11 +354,6 @@ class PatcherWorker(
             val inputIsSplitArchive = SplitApkPreparer.isSplitArchive(inputFile)
 
             val initialDeviceStats = applicationContext.deviceStats()
-            PatchStoragePreflight.requireEnoughSpace(inputFile, initialDeviceStats?.storageAvailable)
-            args.logger.info(
-                "[Preflight] storage available=${initialDeviceStats?.storageAvailable ?: -1} " +
-                    "required=${PatchStoragePreflight.requiredBytes(inputFile.length())}"
-            )
 
             // Generic preflight: reject structurally invalid APKs before the patcher mutates anything.
             // Split archives are validated after SplitApkPreparer has produced the mono APK.
@@ -462,6 +457,11 @@ class PatcherWorker(
                 val bundle = patchBundleRepository.bundles.value[uid] ?: return@flatMap emptyList()
                 bundle.nativePayloadsFor(patchNames.toSet()).map { payload -> bundle to payload }
             }
+            val nativePayloadBytes = nativePayloads
+                .groupBy({ (bundle, _) -> bundle }, { (_, payload) -> payload })
+                .entries.fold(0L) { total, (bundle, payloads) ->
+                    Math.addExact(total, bundle.nativePayloadBytes(payloads))
+                }
             val duplicateNativeTargets = nativePayloads.groupBy { (_, payload) -> payload.apkEntry }
                 .filterValues { it.size > 1 }
                 .keys
@@ -476,6 +476,21 @@ class PatcherWorker(
             // writes and 16 KiB-aligns its own output afterwards, so replacement/ABI filtering
             // cannot invalidate the alignment of the exported APK.
             val needsPreparedInput = !inputIsSplitArchive && (stripNativeLibs || nativePayloads.isNotEmpty())
+            val storageWorkload = PatchStoragePreflight.Workload(
+                splitArchive = inputIsSplitArchive,
+                preparedInput = needsPreparedInput,
+                nativePayloadBytes = nativePayloadBytes,
+            )
+            PatchStoragePreflight.requireEnoughSpace(
+                inputFile,
+                initialDeviceStats?.storageAvailable,
+                storageWorkload,
+            )
+            args.logger.info(
+                "[Preflight] storage available=${initialDeviceStats?.storageAvailable ?: -1} " +
+                    "required=${PatchStoragePreflight.requiredBytes(inputFile.length(), storageWorkload)}"
+            )
+
             val runtimeInputFile = if (needsPreparedInput) {
                 val preparedInput = File.createTempFile("runtime-input-", ".apk", runWorkspace)
                 preparedRuntimeInput = preparedInput
