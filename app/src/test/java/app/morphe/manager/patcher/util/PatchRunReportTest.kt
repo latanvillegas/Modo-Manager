@@ -2,6 +2,7 @@ package app.morphe.manager.patcher.util
 
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertTrue
 
 class PatchRunReportTest {
     @Test
@@ -31,6 +32,30 @@ class PatchRunReportTest {
         assertContains(json, "\"selectedAbi\":\"arm64-v8a\"")
         assertContains(json, "\"nativePayloads\":[\"web:lib/arm64-v8a/libweb.so\"]")
         assertContains(json, "\"durationMs\":1234")
+    }
+
+    @Test
+    fun `phase durations serialize in deterministic order`() {
+        val report = report("abc123").copy(
+            phaseDurationsMs = linkedMapOf(
+                "verification_signing_commit" to 30L,
+                "preparation" to 10L,
+                "patching" to 20L,
+            )
+        )
+
+        val text = report.toText()
+        val json = report.toJson()
+        assertTrue(text.indexOf("phase_ms.patching=20") < text.indexOf("phase_ms.preparation=10"))
+        assertTrue(
+            text.indexOf("phase_ms.preparation=10") <
+                text.indexOf("phase_ms.verification_signing_commit=30")
+        )
+        assertContains(
+            json,
+            "\"phaseDurationsMs\":{\"patching\":20, \"preparation\":10, " +
+                "\"verification_signing_commit\":30}"
+        )
     }
 
     private fun report(inputSha256: String?) = PatchRunReport(
