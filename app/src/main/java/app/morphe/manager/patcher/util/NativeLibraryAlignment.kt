@@ -12,56 +12,57 @@ import java.util.zip.ZipFile
 object NativeLibraryAlignment {
     const val ALIGNMENT = 16 * 1024
     private const val LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50
+    private const val DATA_DESCRIPTOR_SIGNATURE = 0x08074b50
 
     data class MisalignedEntry(val name: String, val dataOffset: Long)
 
-    fun misalignedStoredLibraries(apk: File): List<MisalignedEntry> {
-        val storedLibraries = ZipFile(apk).use { zip ->
-            zip.entries().asSequence()
+    fun misalignedStoredLibraries(apk: File): List<MisalignedEntry> =
+        ZipFile(apk).use { zip ->
+            val storedLibraries = zip.entries().asSequence()
                 .filter { !it.isDirectory && it.method == ZipEntry.STORED }
                 .map { it.name }
                 .filter { it.startsWith("lib/") && it.endsWith(".so") }
                 .toSet()
-        }
-        if (storedLibraries.isEmpty()) return emptyList()
+            if (storedLibraries.isEmpty()) return@use emptyList()
 
-        RandomAccessFile(apk, "r").use { file ->
-            val result = mutableListOf<MisalignedEntry>()
-            var offset = 0L
-            while (offset + 30 <= file.length()) {
-                file.seek(offset)
-                if (readIntLe(file) != LOCAL_FILE_HEADER_SIGNATURE) break
-
-                file.skipBytes(2) // version needed
-                val flags = readShortLe(file)
-                file.skipBytes(2) // method
-                file.skipBytes(2 + 2 + 4 + 4 + 4) // time/date/crc/sizes
-                val nameLength = readShortLe(file)
-                val extraLength = readShortLe(file)
-                val nameBytes = ByteArray(nameLength)
-                file.readFully(nameBytes)
-                val name = nameBytes.toString(Charsets.UTF_8)
-                val dataOffset = offset + 30L + nameLength + extraLength
-
-                // Sizes in local headers can be zero with data descriptors, so use the central
-                // directory for the compressed size and advance only for entries we can resolve.
-                val compressedSize = ZipFile(apk).use { zip -> zip.getEntry(name)?.compressedSize ?: -1L }
-                if (name in storedLibraries && dataOffset % ALIGNMENT != 0L) {
-                    result += MisalignedEntry(name, dataOffset)
-                }
-                if (compressedSize < 0) break
-                offset = dataOffset + compressedSize
-
-                // A data descriptor, when present, sits between data and the next local header.
-                if (flags and 0x08 != 0) {
+            RandomAccessFile(apk, "r").use { file ->
+                val result = mutableListOf<MisalignedEntry>()
+                var offset = 0L
+                while (offset + 30 <= file.length()) {
                     file.seek(offset)
-                    val possibleSignature = if (offset + 4 <= file.length()) readIntLe(file) else -1
-                    offset += if (possibleSignature == 0x08074b50) 16 else 12
+                    if (readIntLe(file) != LOCAL_FILE_HEADER_SIGNATURE) break
+
+                    file.skipBytes(2) // version needed
+                    val flags = readShortLe(file)
+                    file.skipBytes(2) // method
+                    file.skipBytes(2 + 2 + 4 + 4 + 4) // time/date/crc/sizes
+                    val nameLength = readShortLe(file)
+                    val extraLength = readShortLe(file)
+                    check(offset + 30L + nameLength + extraLength <= file.length()) {
+                        "Malformed ZIP local header at offset $offset"
+                    }
+
+                    val nameBytes = ByteArray(nameLength)
+                    file.readFully(nameBytes)
+                    val name = nameBytes.toString(Charsets.UTF_8)
+                    val dataOffset = offset + 30L + nameLength + extraLength
+                    val compressedSize = zip.getEntry(name)?.compressedSize ?: break
+
+                    if (name in storedLibraries && dataOffset % ALIGNMENT != 0L) {
+                        result += MisalignedEntry(name, dataOffset)
+                    }
+
+                    offset = dataOffset + compressedSize
+                    if (flags and 0x08 != 0) {
+                        if (offset + 12 > file.length()) break
+                        file.seek(offset)
+                        val possibleSignature = readIntLe(file)
+                        offset += if (possibleSignature == DATA_DESCRIPTOR_SIGNATURE) 16 else 12
+                    }
                 }
+                result
             }
-            return result
         }
-    }
 
     fun requireAligned(apk: File) {
         val failures = misalignedStoredLibraries(apk)
