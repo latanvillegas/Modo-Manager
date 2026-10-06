@@ -133,7 +133,9 @@ data class QuickPatchParams(
     val selectedApp: SelectedApp,
     val patches: PatchSelection,
     val options: Options,
-    val targetPackageName: String? = null
+    val targetPackageName: String? = null,
+    /** Optional output ABI; null selects automatically. */
+    val selectedAbi: String? = null
 )
 
 
