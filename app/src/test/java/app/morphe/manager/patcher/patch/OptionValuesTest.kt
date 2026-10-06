@@ -18,6 +18,7 @@ import app.morphe.patcher.patch.stringsOption
 import kotlin.reflect.typeOf
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -172,6 +173,32 @@ class OptionValuesTest {
         assertEquals(2, logger.warnings.size)
         assertTrue(logger.warnings.any { it.contains("versionCode") })
         assertTrue(logger.warnings.any { it.contains("removedInThisBundleVersion") })
+    }
+
+    @Test
+    fun `strict preflight rejects options for removed patch`() {
+        val patches = patchesByName(
+            bytecodePatch(name = "Numbers") { intOption("versionCode", default = 1) }
+        )
+
+        assertFailsWith<IllegalArgumentException> {
+            patches.requirePatchOptionsAvailable(
+                mapOf("RemovedPatch" to mapOf("whatever" to "1"))
+            )
+        }
+    }
+
+    @Test
+    fun `strict preflight rejects removed option key`() {
+        val patches = patchesByName(
+            bytecodePatch(name = "Numbers") { intOption("versionCode", default = 1) }
+        )
+
+        assertFailsWith<IllegalArgumentException> {
+            patches.requirePatchOptionsAvailable(
+                mapOf("Numbers" to mapOf("removedOption" to "1"))
+            )
+        }
     }
 
     @Test
