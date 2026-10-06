@@ -2234,7 +2234,7 @@ class HomeViewModel(
                             )
                         }
                     } catch (e: Exception) {
-                        preparedFile?.delete()
+                        cleanupPreparedApkAfterFailure(preparedFile)
                         Log.e(tag, "Failed to prepare installed APK", e)
                         null
                     }
@@ -2418,7 +2418,7 @@ class HomeViewModel(
                             )
                         }
                     } catch (e: Exception) {
-                        preparedFile?.delete()
+                        cleanupPreparedApkAfterFailure(preparedFile)
                         Log.e(tag, "Failed to prepare APK from picker", e)
                         null
                     }
@@ -3573,6 +3573,13 @@ class HomeViewModel(
      * uiTempDir uses getDir() which is part of the app's private files and is never
      * cleared by the system automatically.
      */
+    private fun cleanupPreparedApkAfterFailure(file: File?) {
+        file ?: return
+        if (!file.delete() && file.exists()) {
+            Log.w(tag, "Failed to delete temporary prepared APK: ${file.absolutePath}")
+        }
+    }
+
     private suspend fun loadLocalApk(
         context: Context,
         uri: Uri
