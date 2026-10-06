@@ -611,6 +611,19 @@ class PatcherWorker(
                 check(pm.getPackageInfo(transactionalOutput) != null) {
                     "Signed APK package metadata is unreadable; final output was not replaced"
                 }
+                val archiveCertificateHashes = pm.getApkFileSignatureHashes(transactionalOutput)
+                check(archiveCertificateHashes.isNotEmpty()) {
+                    "Signed APK has no verifiable signing certificate; final output was not replaced"
+                }
+                val expectedCertificateHashes = keystoreManager.signingCertificateHashes()
+                check(expectedCertificateHashes.isNotEmpty() &&
+                    archiveCertificateHashes.any { it in expectedCertificateHashes }) {
+                    "Signed APK certificate does not match the active Manager keystore"
+                }
+                args.logger.info(
+                    "[Postflight] signing certificate verified: " +
+                        archiveCertificateHashes.sorted().joinToString(",")
+                )
 
                 TransactionalApkOutput.commit(finalOutput, transactionalOutput)
 
@@ -623,7 +636,7 @@ class PatcherWorker(
                         )
                     }
                     add("Native library alignment verified at 16 KiB")
-                    add("APK signed and structurally verified")
+                    add("APK signature, certificate, structure and package metadata verified")
                 }
                 val report = PatchRunReport(
                     packageName = args.packageName,
