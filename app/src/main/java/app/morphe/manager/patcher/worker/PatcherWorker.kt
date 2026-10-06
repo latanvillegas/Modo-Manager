@@ -579,22 +579,43 @@ class PatcherWorker(
                     transactionalOutput.delete()
                 }
 
+                val reportChanges = buildList {
+                    add("Selected patches applied: $selectedCount")
+                    if (stripNativeLibs) {
+                        add(
+                            args.selectedAbi?.let { "Native libraries restricted to ABI $it" }
+                                ?: "Unused native ABIs stripped for this device"
+                        )
+                    }
+                    add("Native library alignment verified at 16 KiB")
+                    add("APK signed and structurally verified")
+                }
                 val report = PatchRunReport(
                     packageName = args.packageName,
                     version = args.input.version,
-                    inputSha256 = if (!inputIsSplitArchive) ApkPreflight.inspect(inputFile).sha256 else "",
+                    inputSha256 = if (!inputIsSplitArchive) ApkPreflight.inspect(inputFile).sha256 else null,
                     outputSha256 = ApkPreflight.inspect(finalOutput).sha256,
                     inputSize = inputFile.length(),
                     outputSize = finalOutput.length(),
                     abis = unsignedPreflight.abis,
                     selectedPatches = args.selectedPatches.values.flatten().sorted(),
-                    changes = listOf("DEX/resources patched", "APK signed and structurally verified"),
+                    changes = reportChanges,
                     warnings = unsignedPreflight.findings
                         .filter { it.severity == ApkPreflight.Severity.WARNING }
                         .map { "${it.code}: ${it.message}" },
                     succeeded = true,
                 )
-                report.writeTo(finalOutput.parentFile ?: fs.tempDir, "${finalOutput.nameWithoutExtension}-patch-report")
+                runCatching {
+                    report.writeTo(
+                        finalOutput.parentFile ?: fs.tempDir,
+                        "${finalOutput.nameWithoutExtension}-patch-report"
+                    )
+                }.onFailure { error ->
+                    args.logger.warn(
+                        "Patched APK was committed successfully, but the diagnostic report could not be written: " +
+                            (error.message ?: error::class.java.simpleName)
+                    )
+                }
             } finally {
                 transactionalOutput.delete()
             }
