@@ -161,9 +161,11 @@ class OriginalApkRepository(
     suspend fun delete(packageName: String) = withContext(Dispatchers.IO) {
         val existing = dao.get(packageName) ?: return@withContext
         val file = File(existing.filePath)
-        if (file.exists()) {
-            file.delete()
+        check(!file.exists() || file.delete() || !file.exists()) {
+            "Could not delete retained original APK: ${file.path}"
         }
+        // Keep the record while its file still exists. Otherwise a failed filesystem deletion
+        // would orphan storage and remove the user's only handle for retrying the operation.
         dao.deleteByPackage(packageName)
         Log.d(TAG, "Deleted original APK for $packageName")
     }
@@ -173,8 +175,8 @@ class OriginalApkRepository(
      */
     suspend fun delete(originalApk: OriginalApk) = withContext(Dispatchers.IO) {
         val file = File(originalApk.filePath)
-        if (file.exists()) {
-            file.delete()
+        check(!file.exists() || file.delete() || !file.exists()) {
+            "Could not delete retained original APK: ${file.path}"
         }
         dao.delete(originalApk)
     }
