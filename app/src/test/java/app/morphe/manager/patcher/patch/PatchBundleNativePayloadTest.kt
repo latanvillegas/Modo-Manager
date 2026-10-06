@@ -161,6 +161,29 @@ class PatchBundleNativePayloadTest {
 
 
     @Test
+    fun `duplicate native manifest field is rejected after properties normalization`() {
+        val jar = bundle(mapOf(
+            "META-INF/morphe/native-payloads.properties" to """
+                schemaVersion=1
+                capabilities=NATIVE
+                payload.demo.apkEntry=lib/testabi/libfirst.so
+                payload.demo.apkEntry=lib/testabi/libsecond.so
+                payload.demo.entry=payload/native/testabi/libdemo.so
+                payload.demo.patchName=Demo Patch
+                payload.demo.originalSha256=0000000000000000000000000000000000000000000000000000000000000000
+                payload.demo.replacementSha256=1111111111111111111111111111111111111111111111111111111111111111
+            """.trimIndent().toByteArray()
+        ))
+        try {
+            assertFailsWith<IllegalArgumentException> {
+                PatchBundle(jar.absolutePath).nativePayloadManifest()
+            }
+        } finally {
+            jar.delete()
+        }
+    }
+
+    @Test
     fun `future native manifest schema is rejected`() {
         val jar = bundle(mapOf(
             "META-INF/morphe/native-payloads.properties" to """
