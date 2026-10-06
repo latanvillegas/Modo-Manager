@@ -101,9 +101,15 @@ fun Map<String, Patch<*>>.applyPatchOptions(
             )
         }
 
+        // PatchOption is star-projected after lookup by key, so invoking its validator
+        // requires restoring the matching generic view for this already-coerced value.
         @Suppress("UNCHECKED_CAST")
-        val acceptsValue = (option.validator as (PatchOption<Any?>, Any?) -> Boolean)
-        if (!acceptsValue(option as PatchOption<Any?>, coerced)) {
+        fun acceptsCoercedValue(): Boolean {
+            val typedOption = option as PatchOption<Any?>
+            val acceptsValue = option.validator as (PatchOption<Any?>, Any?) -> Boolean
+            return acceptsValue(typedOption, coerced)
+        }
+        if (!acceptsCoercedValue()) {
             return@setOption logger.warn(
                 "Option \"$key\" of the \"$patchName\" patch rejected stale or invalid value \"$coerced\""
             )
