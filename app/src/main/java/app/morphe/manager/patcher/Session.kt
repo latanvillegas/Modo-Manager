@@ -132,9 +132,17 @@ class Session(
     }
 
     override fun close() {
-        tempDir.deleteRecursively()
-        fileWorkspace.deleteRecursively()
-        patcher.close()
+        try {
+            // Let the patcher release anything it still owns before its scratch directories vanish.
+            patcher.close()
+        } finally {
+            if (!tempDir.deleteRecursively() && tempDir.exists()) {
+                logger.warn("Failed to delete patcher session temp directory: ${tempDir.absolutePath}")
+            }
+            if (!fileWorkspace.deleteRecursively() && fileWorkspace.exists()) {
+                logger.warn("Failed to delete patcher file workspace: ${fileWorkspace.absolutePath}")
+            }
+        }
     }
 
     companion object {
