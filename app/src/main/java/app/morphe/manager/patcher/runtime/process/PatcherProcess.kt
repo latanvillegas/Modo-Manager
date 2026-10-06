@@ -108,6 +108,12 @@ class PatcherProcess(private val context: Context) : IPatcherProcess.Stub() {
 
             try {
                 if (preparation.merged) {
+                    // Keep the exported merged original pristine. Native payload replacement is
+                    // applied only to the private working APK that Session consumes.
+                    parameters.mergedInputFile?.let { dest ->
+                        preparation.file.copyTo(File(dest), overwrite = true)
+                    }
+
                     NativePayloadApplier.apply(
                         apkFile = preparation.file,
                         selections = parameters.configurations.map { config ->
@@ -118,12 +124,6 @@ class PatcherProcess(private val context: Context) : IPatcherProcess.Stub() {
                         selectedAbi = parameters.selectedAbi,
                     )
                     events.progress(null, State.COMPLETED.name, null)
-
-                    // Persist the exact prepared input that Session receives. This keeps saved
-                    // merged APKs deterministic across CoroutineRuntime and ProcessRuntime.
-                    parameters.mergedInputFile?.let { dest ->
-                        preparation.file.copyTo(File(dest), overwrite = true)
-                    }
                 }
 
                 Session(
