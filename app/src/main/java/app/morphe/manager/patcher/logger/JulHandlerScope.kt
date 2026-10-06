@@ -14,9 +14,13 @@ import java.util.logging.Handler
 internal object JulHandlerScope {
     private val mutex = Mutex()
 
-    suspend fun <T> withHandler(handler: Handler, block: suspend () -> T): T =
+    suspend fun <T> withHandler(
+        handler: Handler,
+        target: java.util.logging.Logger = java.util.logging.Logger.getLogger(""),
+        block: suspend () -> T,
+    ): T =
         mutex.withLock {
-            val root = java.util.logging.Logger.getLogger("")
+            val root = target
             val previous = root.handlers.toList()
 
             previous.forEach(root::removeHandler)
