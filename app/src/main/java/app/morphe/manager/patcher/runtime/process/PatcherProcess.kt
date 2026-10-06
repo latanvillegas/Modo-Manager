@@ -123,6 +123,9 @@ class PatcherProcess(private val context: Context) : IPatcherProcess.Stub() {
                                 declaredPatchNamesByKey = config.patches.associateWith { key ->
                                     config.declaredPatchNames[key] ?: key
                                 },
+                                availableDeclaredPatchNamesByKey = requireNotNull(allPatches[config.bundle]) {
+                                    "Patch bundle ${config.bundle.patchesJar} disappeared before native payload validation"
+                                }.mapValues { (_, patch) -> patch.name.orEmpty() },
                             )
                         },
                         workspace = preparation.file.parentFile ?: File(parameters.cacheDir),
