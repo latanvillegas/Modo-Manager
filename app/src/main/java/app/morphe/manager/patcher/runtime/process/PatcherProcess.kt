@@ -120,7 +120,7 @@ class PatcherProcess(private val context: Context) : IPatcherProcess.Stub() {
                             NativePayloadApplier.Selection(
                                 bundle = config.bundle,
                                 patchNames = config.patches,
-                                declaredPatchNames = config.patches.mapTo(mutableSetOf()) { key ->
+                                declaredPatchNamesByKey = config.patches.associateWith { key ->
                                     config.declaredPatchNames[key] ?: key
                                 },
                             )
