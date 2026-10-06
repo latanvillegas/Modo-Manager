@@ -115,6 +115,27 @@ class TransactionalApkOutputTest {
         }
     }
     @Test
+    fun `invalid existing output is rejected without deleting previous backup`() {
+        val dir = createTempDirectory("morphe-transaction-").toFile()
+        val output = File(dir, "patched.apk")
+        val pending = TransactionalApkOutput.pending(output)
+        val previous = TransactionalApkOutput.previous(output)
+        try {
+            output.mkdirs()
+            pending.writeText("new")
+            previous.writeText("known-good")
+
+            assertFails { TransactionalApkOutput.commit(output, pending) }
+
+            assertTrue(output.isDirectory)
+            assertEquals("known-good", previous.readText())
+            assertEquals("new", pending.readText())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `commit replaces output and removes backup`() {
         val dir = createTempDirectory("morphe-transaction-").toFile()
         val output = File(dir, "patched.apk")
