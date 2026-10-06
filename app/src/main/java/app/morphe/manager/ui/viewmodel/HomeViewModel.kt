@@ -3026,25 +3026,40 @@ class HomeViewModel(
     /**
      * Proceed with patching.
      */
+    data class AbiSelectionState(
+        val params: QuickPatchParams,
+        val availableAbis: List<String>
+    ) {
+        val isUniversal: Boolean get() = availableAbis.isEmpty()
+    }
+
+    var abiSelection by mutableStateOf<AbiSelectionState?>(null)
+        private set
+
     fun proceedWithPatching(
         selectedApp: SelectedApp,
         patches: PatchSelection,
         options: Options
     ) {
-        // Dismiss InstalledAppInfoDialog here, right before navigating to PatcherScreen.
-        // This ensures there is never a gap between the info dialog closing and the next screen appearing
         dismissInstalledAppInfo()
 
-        onStartQuickPatch?.invoke(
-            QuickPatchParams(
-                selectedApp = selectedApp,
-                patches = patches,
-                options = options,
-                // Handed over before the state below is cleared, since the run has no other way
-                // to learn which install it was started for
-                targetPackageName = pendingRepatchPackageName
-            )
+        val params = QuickPatchParams(
+            selectedApp = selectedApp,
+            patches = patches,
+            options = options,
+            targetPackageName = pendingRepatchPackageName
         )
+
+        viewModelScope.launch {
+            val abis = withContext(Dispatchers.IO) {
+                ApkArchitectureResolver.abisOf(selectedApp).distinct()
+            }
+            if (abis.isEmpty()) {
+                onStartQuickPatch?.invoke(params)
+            } else {
+                abiSelection = AbiSelectionState(params, abis)
+            }
+        }
 
         // Clean only UI state
         pendingPackageName = null
@@ -3057,6 +3072,16 @@ class HomeViewModel(
         resolvedDownloadUrl = null
         showDownloadInstructionsDialog = false
         showFilePickerPromptDialog = false
+    }
+
+    fun confirmAbiSelection(selectedAbi: String?) {
+        val state = abiSelection ?: return
+        abiSelection = null
+        onStartQuickPatch?.invoke(state.params.copy(selectedAbi = selectedAbi))
+    }
+
+    fun dismissAbiSelection() {
+        abiSelection = null
     }
 
     /**
