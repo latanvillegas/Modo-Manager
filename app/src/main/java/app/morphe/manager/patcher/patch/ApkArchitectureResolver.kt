@@ -81,6 +81,11 @@ object ApkArchitectureResolver {
         return Abi.architectureOf(abi) ?: ApkArchitecture.UNIVERSAL
     }
 
+    fun abisOf(selectedApp: SelectedApp, pm: PM): List<String> = when (selectedApp) {
+        is SelectedApp.Local -> abisOf(selectedApp.file)
+        is SelectedApp.Installed -> installedApks(selectedApp.packageName, pm).flatMap(::abisOf).distinct()
+    }
+
     private fun installedApks(packageName: String, pm: PM): List<File> {
         val info = pm.getPackageInfo(packageName)?.applicationInfo ?: return emptyList()
         return (listOf(info.sourceDir) + info.splitSourceDirs?.toList().orEmpty()).map(::File)
