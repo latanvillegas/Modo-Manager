@@ -52,6 +52,23 @@ fun coerceOptionValue(type: KType, value: Any?): Any? {
 }
 
 /**
+ * Validates persisted option paths before any patch mutates the APK. A stale patch/option name
+ * must not be silently ignored because that would make the run differ from the user's selection.
+ */
+fun Map<String, Patch<*>>.requirePatchOptionsAvailable(
+    options: Map<String, Map<String, Any?>>,
+) {
+    options.forEach { (patchName, patchOptions) ->
+        val patch = this[patchName]
+            ?: throw IllegalArgumentException("Options reference unavailable patch \"$patchName\"")
+        val missingOptions = patchOptions.keys - patch.options.keys
+        require(missingOptions.isEmpty()) {
+            "Patch \"$patchName\" no longer has options: ${missingOptions.sorted().joinToString(",")}"
+        }
+    }
+}
+
+/**
  * Applies [options] to the patches of one bundle, each value converted to the type its option
  * declares. Which patches [options] covers is decided before the run, not here.
  */
