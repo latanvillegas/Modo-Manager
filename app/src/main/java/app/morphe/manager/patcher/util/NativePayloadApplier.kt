@@ -59,8 +59,13 @@ object NativePayloadApplier {
         val payloadDir = workspace.resolve("native-payloads").also {
             check(it.mkdirs() || it.isDirectory) { "Could not create native payload workspace" }
         }
-        selected.forEach { (bundle, payload) ->
-            val extracted = bundle.extractNativePayload(payload, payloadDir)
+        selected.forEachIndexed { index, (bundle, payload) ->
+            // Payload IDs are bundle-local. Keep extraction paths bundle-local too so two
+            // independent bundles may safely use the same ID without sharing a filesystem target.
+            val bundlePayloadDir = payloadDir.resolve("bundle-$index").also {
+                check(it.mkdirs() || it.isDirectory) { "Could not create bundle payload workspace" }
+            }
+            val extracted = bundle.extractNativePayload(payload, bundlePayloadDir)
             NativeLibStripper.replaceNativeLibrary(
                 apkFile,
                 NativeLibStripper.NativeReplacement(
