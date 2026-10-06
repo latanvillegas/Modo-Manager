@@ -21,6 +21,7 @@ data class PatchRunReport(
     val bundleSources: List<String> = emptyList(),
     val nativePayloads: List<String> = emptyList(),
     val signingCertificateSha256: List<String> = emptyList(),
+    val signingRepackagedArchive: Boolean? = null,
     val durationMs: Long? = null,
     val phaseDurationsMs: Map<String, Long> = emptyMap(),
 ) {
@@ -43,6 +44,7 @@ data class PatchRunReport(
         bundleSources.forEach { appendLine("bundle=$it") }
         nativePayloads.forEach { appendLine("native_payload=$it") }
         signingCertificateSha256.forEach { appendLine("signing_certificate_sha256=$it") }
+        appendLine("signing_repackaged_archive=${signingRepackagedArchive ?: "?"}")
         selectedPatches.forEach { appendLine("patch=$it") }
         changes.forEach { appendLine("change=$it") }
         warnings.forEach { appendLine("warning=$it") }
@@ -66,6 +68,7 @@ data class PatchRunReport(
         append("\"bundleSources\":${array(bundleSources)},")
         append("\"nativePayloads\":${array(nativePayloads)},")
         append("\"signingCertificateSha256\":${array(signingCertificateSha256)},")
+        append("\"signingRepackagedArchive\":${signingRepackagedArchive ?: "null"},")
         append("\"durationMs\":${durationMs ?: "null"},")
         append("\"phaseDurationsMs\":${longMap(phaseDurationsMs)},")
         append("\"succeeded\":$succeeded")
