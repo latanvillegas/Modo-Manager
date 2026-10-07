@@ -61,4 +61,20 @@ class LocalPatchBundleTransactionTest {
         assertFalse(target.exists())
         assertFalse(dir.resolve("patches.jar.import-backup").exists())
     }
+    @Test
+    fun `rejected candidate never touches installed bundle`() {
+        val original = byteArrayOf(1, 2, 3, 4, 5)
+        target.writeBytes(original)
+        val candidate = dir.resolve("candidate.jar").apply { writeText("invalid bundle") }
+
+        assertFailsWith<IllegalStateException> {
+            replaceBundleFromTempFile(candidate, target) {
+                error("rejected candidate")
+            }
+        }
+
+        assertTrue(target.readBytes().contentEquals(original))
+        assertFalse(dir.resolve("patches.jar.import-backup").exists())
+    }
+
 }
