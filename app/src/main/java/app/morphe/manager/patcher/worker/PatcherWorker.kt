@@ -612,6 +612,9 @@ class PatcherWorker(
 
             // Patcher output is 16 KiB aligned, but any post-patch ZIP rewrite can move STORED
             // native libraries. Never sign/export an APK that Android cannot mmap safely.
+            if (NativeLibraryAlignment.alignStoredLibraries(patchedApk)) {
+                args.logger.info("[Postflight] Realigned STORED native libraries to 16 KiB boundaries")
+            }
             NativeLibraryAlignment.requireAligned(patchedApk)
 
             // Validate the patcher's unsigned output before signing or exporting it.
