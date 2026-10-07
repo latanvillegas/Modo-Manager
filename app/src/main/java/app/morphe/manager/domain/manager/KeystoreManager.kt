@@ -14,6 +14,8 @@ import java.security.MessageDigest
 import java.security.UnrecoverableKeyException
 import java.security.cert.Certificate
 import java.security.cert.X509Certificate
+import java.util.Date
+import kotlin.time.Duration.Companion.days
 import java.util.zip.ZipEntry
 import java.util.zip.ZipException
 import java.util.zip.ZipFile
@@ -65,11 +67,30 @@ class KeystoreManager(app: Application, private val prefs: PreferencesManager) {
     }
 
     private suspend fun signApkPreservingAlignment(input: File, output: File, alias: String) {
-        val pair = ApkSigner.readPrivateKeyCertificatePair(
-            readKeyStore(),
-            alias,
-            prefs.keystorePass.get()
-        )
+        val keyStorePassword = prefs.keystorePassword.get().ifEmpty { null }
+        val keyPassword = prefs.keystorePass.get()
+        val pair = if (keystorePath.exists()) {
+            ApkSigner.readPrivateKeyCertificatePair(
+                readKeyStore(),
+                alias,
+                keyPassword
+            )
+        } else {
+            // Preserve ApkUtils.signApk's first-run behavior while keeping signing itself
+            // alignment-preserving. A fresh Manager has no keystore until its first patch.
+            val generated = ApkSigner.newPrivateKeyCertificatePair(
+                DEFAULT,
+                Date(System.currentTimeMillis() + (365.days * 8).inWholeMilliseconds * 24)
+            )
+            ApkSigner.newKeyStore(
+                setOf(ApkSigner.KeyStoreEntry(alias, keyPassword, generated))
+            ).store(
+                keystorePath.outputStream(),
+                keyStorePassword?.toCharArray()
+            )
+            cachedCertificateHashes = null
+            generated
+        }
         AlignmentPreservingApkSigner.sign(input, output, alias, pair)
     }
 
