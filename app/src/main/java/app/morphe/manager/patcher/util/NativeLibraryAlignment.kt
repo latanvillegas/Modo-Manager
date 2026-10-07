@@ -17,7 +17,25 @@ object NativeLibraryAlignment {
     private const val LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50
     private const val DATA_DESCRIPTOR_SIGNATURE = 0x08074b50
 
+    private const val RESOURCE_TABLE = "resources.arsc"
+    private const val RESOURCE_ALIGNMENT = 4
+
     data class MisalignedEntry(val name: String, val dataOffset: Long)
+
+    data class ResourceTableIssue(
+        val compressed: Boolean,
+        val dataOffset: Long?,
+    )
+
+    fun resourceTableIssue(apk: File): ResourceTableIssue? = ZipFile(apk).use { zip ->
+        val entry = zip.getEntry(RESOURCE_TABLE) ?: return@use null
+        if (entry.isDirectory) return@use ResourceTableIssue(compressed = true, dataOffset = null)
+        val compressed = entry.method != ZipEntry.STORED
+        val offset = findLocalDataOffset(apk, RESOURCE_TABLE)
+        if (!compressed && offset != null && offset % RESOURCE_ALIGNMENT == 0L) null
+        else ResourceTableIssue(compressed, offset)
+    }
+
 
     fun misalignedStoredLibraries(apk: File): List<MisalignedEntry> =
         ZipFile(apk).use { zip ->
@@ -75,9 +93,12 @@ object NativeLibraryAlignment {
             }
         }
 
-    /** Rewrites the APK only when STORED native libraries need 16 KiB alignment. */
+    /**
+     * Rewrites once when either Android's resources.arsc rule or native-library alignment needs it.
+     * resources.arsc is always STORED and 4-byte aligned; STORED native libraries remain 16 KiB aligned.
+     */
     fun alignStoredLibraries(apk: File): Boolean {
-        if (misalignedStoredLibraries(apk).isEmpty()) return false
+        if (misalignedStoredLibraries(apk).isEmpty() && resourceTableIssue(apk) == null) return false
 
         val temp = File(apk.parentFile, "${apk.nameWithoutExtension}-aligned.apk")
         try {
@@ -94,9 +115,34 @@ object NativeLibraryAlignment {
                             if (entry.method == ZipEntry.STORED) compressedSize = entry.size
                         }
 
-                        if (entry.method == ZipEntry.STORED &&
+                        val isResourceTable = entry.name == RESOURCE_TABLE
+                        val isStoredNativeLibrary = entry.method == ZipEntry.STORED &&
                             entry.name.startsWith("lib/") &&
-                            entry.name.endsWith(".so")) {
+                            entry.name.endsWith(".so")
+                        if (isResourceTable) {
+                            copy.method = ZipEntry.STORED
+                            copy.size = entry.size
+                            copy.compressedSize = entry.size
+                            copy.crc = entry.crc
+                            val baseDataOffset = counting.count + 30L +
+                                entry.name.toByteArray(Charsets.UTF_8).size
+                            val padding = ((RESOURCE_ALIGNMENT - (baseDataOffset % RESOURCE_ALIGNMENT)) %
+                                RESOURCE_ALIGNMENT).toInt()
+                            // 1..3 bytes cannot form a ZIP extra field, so add one full 4-byte
+                            // alignment quantum and encode the resulting 5..7 byte extra field.
+                            val extraSize = if (padding in 1..3) padding + RESOURCE_ALIGNMENT else padding
+                            if (extraSize > 0) {
+                                val payload = extraSize - 4
+                                copy.extra = ByteArray(extraSize).apply {
+                                    this[0] = 0x36
+                                    this[1] = 0xd9.toByte()
+                                    this[2] = (payload and 0xff).toByte()
+                                    this[3] = ((payload ushr 8) and 0xff).toByte()
+                                }
+                            } else {
+                                copy.extra = null
+                            }
+                        } else if (isStoredNativeLibrary) {
                             // Rebuild native-entry extras from deterministic alignment padding.
                             // ZipOutputStream can normalize producer-specific extra fields while
                             // writing the local header, so inherited extras cannot be part of the
@@ -162,12 +208,48 @@ object NativeLibraryAlignment {
     }
 
     fun requireAligned(apk: File) {
+        resourceTableIssue(apk)?.let { issue ->
+            check(false) {
+                "resources.arsc must be STORED and 4-byte aligned: " +
+                    "compressed=${issue.compressed}, dataOffset=${issue.dataOffset}"
+            }
+        }
         val failures = misalignedStoredLibraries(apk)
         check(failures.isEmpty()) {
             "Stored native libraries are not 16 KiB aligned: " +
                 failures.joinToString { "${it.name}@${it.dataOffset}" }
         }
     }
+
+    private fun findLocalDataOffset(apk: File, targetName: String): Long? =
+        ZipFile(apk).use { zip ->
+            RandomAccessFile(apk, "r").use { file ->
+                var offset = 0L
+                while (offset + 30 <= file.length()) {
+                    file.seek(offset)
+                    if (readIntLe(file) != LOCAL_FILE_HEADER_SIGNATURE) return@use null
+                    file.skipBytes(2)
+                    val flags = readShortLe(file)
+                    file.skipBytes(2 + 2 + 2 + 4 + 4 + 4)
+                    val nameLength = readShortLe(file)
+                    val extraLength = readShortLe(file)
+                    if (offset + 30L + nameLength + extraLength > file.length()) return@use null
+                    val nameBytes = ByteArray(nameLength)
+                    file.readFully(nameBytes)
+                    val name = nameBytes.toString(Charsets.UTF_8)
+                    val dataOffset = offset + 30L + nameLength + extraLength
+                    if (name == targetName) return@use dataOffset
+                    val compressedSize = zip.getEntry(name)?.compressedSize ?: return@use null
+                    offset = dataOffset + compressedSize
+                    if (flags and 0x08 != 0) {
+                        if (offset + 12 > file.length()) return@use null
+                        file.seek(offset)
+                        offset += if (readIntLe(file) == DATA_DESCRIPTOR_SIGNATURE) 16 else 12
+                    }
+                }
+                null
+            }
+        }
 
     private class CountingOutputStream(output: OutputStream) : FilterOutputStream(output) {
         var count: Long = 0
