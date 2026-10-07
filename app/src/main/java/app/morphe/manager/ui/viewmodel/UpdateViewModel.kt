@@ -180,8 +180,17 @@ class UpdateViewModel : ViewModel(), KoinComponent {
         if (location.hasZipHeader()) return@withContext
 
         val size = runCatching { location.length() }.getOrDefault(0L)
-        runCatching { location.delete() }
-        throw IOException("The downloaded update is not an APK (size=$size)")
+        val error = IOException("The downloaded update is not an APK (size=$size)")
+        try {
+            if (location.exists()) {
+                check(location.delete() || !location.exists()) {
+                    "Could not delete rejected update download: ${location.absolutePath}"
+                }
+            }
+        } catch (cleanupError: Throwable) {
+            error.addSuppressed(cleanupError)
+        }
+        throw error
     }
 
     fun installUpdate() = viewModelScope.launch {
