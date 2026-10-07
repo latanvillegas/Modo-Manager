@@ -128,9 +128,10 @@ object NativeLibraryAlignment {
                                 entry.name.toByteArray(Charsets.UTF_8).size
                             val padding = ((RESOURCE_ALIGNMENT - (baseDataOffset % RESOURCE_ALIGNMENT)) %
                                 RESOURCE_ALIGNMENT).toInt()
-                            // 1..3 bytes cannot form a ZIP extra field, so add one full 4-byte
-                            // alignment quantum and encode the resulting 5..7 byte extra field.
-                            val extraSize = if (padding in 1..3) padding + RESOURCE_ALIGNMENT else padding
+                            // A ZIP extra field has a 4-byte header. Because that header is
+                            // itself a multiple of the required alignment, a 4+padding byte field
+                            // preserves exactly the padding remainder we need.
+                            val extraSize = if (padding > 0) padding + 4 else 0
                             if (extraSize > 0) {
                                 val payload = extraSize - 4
                                 copy.extra = ByteArray(extraSize).apply {
