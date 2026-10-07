@@ -1151,24 +1151,9 @@ class PatchBundleRepository(
                         if (e is CancellationException) throw e
                         Log.e(tag, "Got exception while importing bundle", e)
                         toast(R.string.home_app_info_patches_replace_fail, e.simpleMessage())
-
-                        withContext(Dispatchers.IO) {
-                            runCatching {
-                                localBundle.patchesJarFile.setWritable(true, true)
-                            }.onFailure { cleanupError ->
-                                Log.w(tag, "Failed to make rejected patch bundle writable for cleanup", cleanupError)
-                            }
-                            if (
-                                localBundle.patchesJarFile.exists() &&
-                                !localBundle.patchesJarFile.delete() &&
-                                localBundle.patchesJarFile.exists()
-                            ) {
-                                Log.w(
-                                    tag,
-                                    "Failed to delete rejected patch bundle: ${localBundle.patchesJarFile.absolutePath}"
-                                )
-                            }
-                        }
+                        // LocalPatchBundle owns the transaction and restores the previous
+                        // patches.jar on failure. Do not delete patchesJarFile here: after a
+                        // rollback it is the last known-good installed bundle.
                     }
                 } finally {
                     if (tempFile.exists() && !tempFile.delete() && tempFile.exists()) {
