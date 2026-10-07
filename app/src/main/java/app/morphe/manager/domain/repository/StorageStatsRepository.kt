@@ -115,7 +115,7 @@ class StorageStatsRepository(
     suspend fun clearPatcherWorkspace(): Long = withContext(Dispatchers.IO) {
         val entries = collectPatcherWorkspaceEntries()
         val freed = entries.sumOf { it.totalBytes() }
-        entries.forEach { it.deleteRecursively() }
+        entries.forEach { it.deleteRecursivelyChecked() }
         refresh()
         freed
     }
@@ -187,5 +187,11 @@ private fun File.totalBytes(): Long =
 
 private fun File.wipeContents() {
     if (!exists()) return
-    listFiles()?.forEach { it.deleteRecursively() }
+    listFiles()?.forEach { it.deleteRecursivelyChecked() }
+}
+
+private fun File.deleteRecursivelyChecked() {
+    check(!exists() || deleteRecursively() || !exists()) {
+        "Could not delete cache entry: $absolutePath"
+    }
 }
