@@ -2,6 +2,8 @@ package app.morphe.manager.patcher.util
 
 import java.io.File
 import java.io.RandomAccessFile
+import java.io.FilterOutputStream
+import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
@@ -80,7 +82,8 @@ object NativeLibraryAlignment {
         val temp = File(apk.parentFile, "${apk.nameWithoutExtension}-aligned.apk")
         try {
             ZipFile(apk).use { zip ->
-                ZipOutputStream(temp.outputStream().buffered()).use { output ->
+                val counting = CountingOutputStream(temp.outputStream().buffered())
+                ZipOutputStream(counting).use { output ->
                     zip.entries().asSequence().forEach { entry ->
                         val copy = ZipEntry(entry.name).apply {
                             method = entry.method
@@ -94,19 +97,27 @@ object NativeLibraryAlignment {
                         if (entry.method == ZipEntry.STORED &&
                             entry.name.startsWith("lib/") &&
                             entry.name.endsWith(".so")) {
-                            val currentOffset = temp.length()
-                            val baseDataOffset = currentOffset + 30L + entry.name.toByteArray(Charsets.UTF_8).size
-                            val padding = ((ALIGNMENT - (baseDataOffset % ALIGNMENT)) % ALIGNMENT).toInt()
+                            val existingExtra = entry.extra ?: ByteArray(0)
+                            val baseDataOffset = counting.count + 30L +
+                                entry.name.toByteArray(Charsets.UTF_8).size + existingExtra.size
+                            var padding = ((ALIGNMENT - (baseDataOffset % ALIGNMENT)) % ALIGNMENT).toInt()
+                            // ZIP extra fields require a 4-byte header. If the exact remainder is
+                            // 1..3 bytes, use the equivalent padding one alignment page later.
+                            if (padding in 1..3) padding += ALIGNMENT
                             if (padding > 0) {
-                                require(padding >= 4) { "Invalid ZIP alignment padding: $padding" }
-                                // Valid private extra-field record: header id 0xd935 + payload length.
                                 val payload = padding - 4
-                                copy.extra = ByteArray(padding).apply {
+                                require(existingExtra.size + padding <= 0xffff) {
+                                    "ZIP extra field would exceed 65535 bytes for ${entry.name}"
+                                }
+                                val alignmentExtra = ByteArray(padding).apply {
                                     this[0] = 0x35
                                     this[1] = 0xd9.toByte()
                                     this[2] = (payload and 0xff).toByte()
                                     this[3] = ((payload ushr 8) and 0xff).toByte()
                                 }
+                                copy.extra = existingExtra + alignmentExtra
+                            } else {
+                                copy.extra = existingExtra.takeIf { it.isNotEmpty() }
                             }
                         } else {
                             entry.extra?.let { copy.extra = it.copyOf() }
@@ -151,6 +162,21 @@ object NativeLibraryAlignment {
         check(failures.isEmpty()) {
             "Stored native libraries are not 16 KiB aligned: " +
                 failures.joinToString { "${it.name}@${it.dataOffset}" }
+        }
+    }
+
+    private class CountingOutputStream(output: OutputStream) : FilterOutputStream(output) {
+        var count: Long = 0
+            private set
+
+        override fun write(value: Int) {
+            out.write(value)
+            count++
+        }
+
+        override fun write(bytes: ByteArray, offset: Int, length: Int) {
+            out.write(bytes, offset, length)
+            count += length
         }
     }
 
