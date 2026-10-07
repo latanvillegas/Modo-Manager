@@ -170,6 +170,20 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
+
+            // GitHub-hosted runners are ephemeral, so their default ~/.android/debug.keystore
+            // changes between runs. Use the repository's persistent signing key when supplied
+            // so manual debug artifacts remain Android-update-compatible across builds.
+            val ciKeystore = System.getenv("MODO_DEBUG_KEYSTORE")?.let(::file)
+            if (ciKeystore?.exists() == true) {
+                signingConfig = signingConfigs.create("persistentDebug") {
+                    storeFile = ciKeystore
+                    storePassword = System.getenv("KEYSTORE_PASSWORD")
+                    keyAlias = System.getenv("KEYSTORE_ENTRY_ALIAS")
+                    keyPassword = System.getenv("KEYSTORE_ENTRY_PASSWORD")
+                }
+            }
+
             buildConfigField("long", "BUILD_ID", "${Random.nextLong()}L")
         }
 
