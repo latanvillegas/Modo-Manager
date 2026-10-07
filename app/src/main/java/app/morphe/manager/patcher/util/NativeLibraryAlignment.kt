@@ -97,9 +97,13 @@ object NativeLibraryAlignment {
                         if (entry.method == ZipEntry.STORED &&
                             entry.name.startsWith("lib/") &&
                             entry.name.endsWith(".so")) {
-                            val existingExtra = entry.extra ?: ByteArray(0)
+                            // Rebuild native-entry extras from deterministic alignment padding.
+                            // ZipOutputStream can normalize producer-specific extra fields while
+                            // writing the local header, so inherited extras cannot be part of the
+                            // predicted data offset.
+                            val existingExtra = ByteArray(0)
                             val baseDataOffset = counting.count + 30L +
-                                entry.name.toByteArray(Charsets.UTF_8).size + existingExtra.size
+                                entry.name.toByteArray(Charsets.UTF_8).size
                             var padding = ((ALIGNMENT - (baseDataOffset % ALIGNMENT)) % ALIGNMENT).toInt()
                             // ZIP extra fields require a 4-byte header. If the exact remainder is
                             // 1..3 bytes, use the equivalent padding one alignment page later.
