@@ -85,9 +85,15 @@ sealed class PatchBundleSource(
     protected suspend fun installPatchBundle(context: String, write: suspend (staging: File) -> Unit) {
         val staging = directory.resolve(STAGING_FILE_NAME)
         try {
-            directory.mkdirs()
-            runCatching { staging.setWritable(true, true) }
-            runCatching { staging.delete() }
+            check(directory.mkdirs() || directory.isDirectory) {
+                "$context could not create the patch bundle directory"
+            }
+            if (staging.exists()) {
+                runCatching { staging.setWritable(true, true) }
+                check(staging.delete() || !staging.exists()) {
+                    "$context could not clear stale patch bundle staging file"
+                }
+            }
             write(staging)
             requireNonEmptyBundleFile(staging, context)
             staging.setReadOnly()
@@ -97,8 +103,16 @@ sealed class PatchBundleSource(
                 throw IOException("$context could not replace the installed patch bundle")
             }
         } catch (t: Throwable) {
-            runCatching { staging.setWritable(true, true) }
-            runCatching { staging.delete() }
+            try {
+                runCatching { staging.setWritable(true, true) }
+                if (staging.exists()) {
+                    check(staging.delete() || !staging.exists()) {
+                        "$context could not delete the failed patch bundle staging file"
+                    }
+                }
+            } catch (cleanupError: Throwable) {
+                t.addSuppressed(cleanupError)
+            }
             throw t
         }
     }
@@ -106,16 +120,34 @@ sealed class PatchBundleSource(
     protected fun requireNonEmptyBundleFile(file: File, context: String) {
         val length = runCatching { file.length() }.getOrDefault(0L)
         if (length < MIN_PATCH_BUNDLE_BYTES) {
-            runCatching { file.delete() }
-            throw IOException("$context produced an empty or truncated patch bundle (size=$length)")
+            rejectBundleFile(
+                file,
+                IOException("$context produced an empty or truncated patch bundle (size=$length)")
+            )
         }
 
         // Patch bundles are zip archives whether they arrive as .mpp or .jar, so a response that
         // transferred cleanly but is not one must not be installed
         if (!file.hasZipHeader()) {
-            runCatching { file.delete() }
-            throw IOException("$context produced a file that is not a patch bundle archive")
+            rejectBundleFile(
+                file,
+                IOException("$context produced a file that is not a patch bundle archive")
+            )
         }
+    }
+
+    private fun rejectBundleFile(file: File, error: IOException): Nothing {
+        try {
+            runCatching { file.setWritable(true, true) }
+            if (file.exists()) {
+                check(file.delete() || !file.exists()) {
+                    "Could not delete rejected patch bundle: ${file.absolutePath}"
+                }
+            }
+        } catch (cleanupError: Throwable) {
+            error.addSuppressed(cleanupError)
+        }
+        throw error
     }
 
     sealed interface State {
