@@ -3,6 +3,7 @@ about-libraries = "15.2.0"
 accompanist = "0.37.3"
 activity = "1.13.0"
 android-gradle-plugin = "9.4.1"
+android-tools = "9.1.1"
 app-icon-loader-coil = "1.5.0"
 appcompat = "1.8.0"
 arsclib = "88d5e0811f"
@@ -87,6 +88,7 @@ room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room-ver
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room-version" }
 
 # Patcher
+apksig = { module = "com.android.tools.build:apksig", version.ref = "android-tools" }
 arsclib = { module = "com.github.MorpheApp:ARSCLib", version.ref = "arsclib" }
 morphe-patcher = { group = "app.morphe", name = "morphe-patcher", version.ref = "morphe-patcher" }
 morphe-library = { group = "app.morphe", name = "morphe-library", version.ref = "morphe-library" }
