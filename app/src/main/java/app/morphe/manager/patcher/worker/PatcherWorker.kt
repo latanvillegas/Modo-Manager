@@ -459,14 +459,6 @@ class PatcherWorker(
                 args.logger.info("$LOG_WORKER_PREFIX_RUNTIME coroutine")
             }
 
-            // Execute patching. ProcessRuntime has its own retry loop that reduces memory on OOM
-            // If it still fails on Android <= Q, fall back to CoroutineRuntime
-            val runtime = if (useProcessRuntime) {
-                ProcessRuntime(applicationContext)
-            } else {
-                CoroutineRuntime(applicationContext)
-            }
-
             val options = args.options.restrictTo(args.selectedPatches)
 
             // Native payloads are bundle data, never app-specific Manager rules. Resolve only
@@ -558,55 +550,19 @@ class PatcherWorker(
 
             preparationDurationMs = (System.nanoTime() - phaseStartNanos) / 1_000_000
             val patchingStartNanos = System.nanoTime()
-            try {
-                runtime.execute(
-                    inputFile = runtimeInputFile.absolutePath,
-                    outputFile = patchedApk.absolutePath,
-                    packageName = args.packageName,
-                    selectedPatches = args.selectedPatches,
-                    declaredPatchNames = args.declaredPatchNames,
-                    options = options,
-                    logger = args.logger,
-                    onPatchCompleted = onPatchCompleted,
-                    onProgress = ::updateProgress,
-                    skipUnneededSplits = stripNativeLibs,
-                    selectedAbi = args.selectedAbi,
-                    onMergedApkReady = onMergedApkReady,
-                    onRestart = onRestart,
-                )
-            } catch (e: Exception) {
-                val fallbackReason = when {
-                    !useProcessRuntime -> null
-                    isBlockedSyscall(e) -> "Patcher process was killed for a system call the device forbids"
-                    e is ProcessRuntime.ProcessConnectTimeoutException -> e.message
-                    e is ProcessRuntime.HeapLimitIgnoredException -> e.message
-                    isOomRelated(e) && Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q ->
-                        "Process runtime OOM on Android ${Build.VERSION.RELEASE}"
-                    else -> null
-                } ?: throw e
-
-                args.logger.warn("$fallbackReason, falling back to coroutine runtime")
-
-                // The fallback is a fresh run of the whole pipeline, same as a memory retry
-                onRestart()
-                args.logger.logCoroutineHeap()
-
-                CoroutineRuntime(applicationContext).execute(
-                    inputFile = runtimeInputFile.absolutePath,
-                    outputFile = patchedApk.absolutePath,
-                    packageName = args.packageName,
-                    selectedPatches = args.selectedPatches,
-                    declaredPatchNames = args.declaredPatchNames,
-                    options = options,
-                    logger = args.logger,
-                    onPatchCompleted = onPatchCompleted,
-                    onProgress = ::updateProgress,
-                    skipUnneededSplits = stripNativeLibs,
-                    selectedAbi = args.selectedAbi,
-                    onMergedApkReady = onMergedApkReady,
-                    onRestart = onRestart,
-                )
-            }
+            executePatchingRuntime(
+                useProcessRuntime = useProcessRuntime,
+                runtimeInputFile = runtimeInputFile,
+                patchedApk = patchedApk,
+                args = args,
+                options = options,
+                stripNativeLibs = stripNativeLibs,
+                onPatchCompleted = onPatchCompleted,
+                onProgress = ::updateProgress,
+                onMergedApkReady = onMergedApkReady,
+                onRestart = onRestart,
+            )
+            args.logger.info("[Runtime] patcher execution returned to worker")
             patchingDurationMs = (System.nanoTime() - patchingStartNanos) / 1_000_000
             val verificationStartNanos = System.nanoTime()
 
@@ -819,6 +775,80 @@ class PatcherWorker(
                 completionSoundEnabled,
                 successSoundUri,
                 errorSoundUri
+            )
+        }
+    }
+
+    /**
+     * Keep the suspend/resume boundary around the patcher runtime out of runPatcher().
+     *
+     * Some Android 15 vendor ART builds have crashed in the interpreter while resuming the very
+     * large runPatcher suspend state machine after the remote app_process exits successfully.
+     * Isolating that boundary also gives diagnostics an unambiguous marker before postflight.
+     */
+    private suspend fun executePatchingRuntime(
+        useProcessRuntime: Boolean,
+        runtimeInputFile: File,
+        patchedApk: File,
+        args: Args,
+        options: Options,
+        stripNativeLibs: Boolean,
+        onPatchCompleted: suspend (String) -> Unit,
+        onProgress: ProgressEventHandler,
+        onMergedApkReady: suspend (File) -> Unit,
+        onRestart: suspend () -> Unit,
+    ) {
+        val runtime = if (useProcessRuntime) {
+            ProcessRuntime(applicationContext)
+        } else {
+            CoroutineRuntime(applicationContext)
+        }
+
+        try {
+            runtime.execute(
+                inputFile = runtimeInputFile.absolutePath,
+                outputFile = patchedApk.absolutePath,
+                packageName = args.packageName,
+                selectedPatches = args.selectedPatches,
+                declaredPatchNames = args.declaredPatchNames,
+                options = options,
+                logger = args.logger,
+                onPatchCompleted = onPatchCompleted,
+                onProgress = onProgress,
+                skipUnneededSplits = stripNativeLibs,
+                selectedAbi = args.selectedAbi,
+                onMergedApkReady = onMergedApkReady,
+                onRestart = onRestart,
+            )
+        } catch (e: Exception) {
+            val fallbackReason = when {
+                !useProcessRuntime -> null
+                isBlockedSyscall(e) -> "Patcher process was killed for a system call the device forbids"
+                e is ProcessRuntime.ProcessConnectTimeoutException -> e.message
+                e is ProcessRuntime.HeapLimitIgnoredException -> e.message
+                isOomRelated(e) && Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q ->
+                    "Process runtime OOM on Android ${Build.VERSION.RELEASE}"
+                else -> null
+            } ?: throw e
+
+            args.logger.warn("$fallbackReason, falling back to coroutine runtime")
+            onRestart()
+            args.logger.logCoroutineHeap()
+
+            CoroutineRuntime(applicationContext).execute(
+                inputFile = runtimeInputFile.absolutePath,
+                outputFile = patchedApk.absolutePath,
+                packageName = args.packageName,
+                selectedPatches = args.selectedPatches,
+                declaredPatchNames = args.declaredPatchNames,
+                options = options,
+                logger = args.logger,
+                onPatchCompleted = onPatchCompleted,
+                onProgress = onProgress,
+                skipUnneededSplits = stripNativeLibs,
+                selectedAbi = args.selectedAbi,
+                onMergedApkReady = onMergedApkReady,
+                onRestart = onRestart,
             )
         }
     }
