@@ -44,8 +44,12 @@ class Filesystem(private val app: Application) {
      * Do not store paths to this directory in a parcel.
      */
     val tempDir: File = app.getDir("ephemeral", Context.MODE_PRIVATE).apply {
-        deleteRecursively()
-        mkdirs()
+        check(!exists() || deleteRecursively() || !exists()) {
+            "Could not clear stale ephemeral directory: $absolutePath"
+        }
+        check(mkdirs() || isDirectory) {
+            "Could not create ephemeral directory: $absolutePath"
+        }
     }
 
     /**
@@ -94,11 +98,24 @@ class Filesystem(private val app: Application) {
         val current = BuildConfig.VERSION_CODE
         if (markedVersion != null && markedVersion != current) {
             listOf("framework", "patcher").forEach { name ->
-                runCatching { app.cacheDir.resolve(name).deleteRecursively() }
+                val directory = app.cacheDir.resolve(name)
+                check(!directory.exists() || directory.deleteRecursively() || !directory.exists()) {
+                    "Could not clear incompatible patcher cache: ${directory.absolutePath}"
+                }
             }
             Log.i(TAG, "Manager version changed ($markedVersion -> $current), wiped patcher workspace")
         }
-        runCatching { versionMarker.writeText(current.toString()) }
+
+        try {
+            versionMarker.parentFile?.let { parent ->
+                check(parent.mkdirs() || parent.isDirectory) {
+                    "Could not create manager version marker directory: ${parent.absolutePath}"
+                }
+            }
+            versionMarker.writeText(current.toString())
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not persist manager version marker: ${versionMarker.absolutePath}", error)
+        }
     }
 
     /**
