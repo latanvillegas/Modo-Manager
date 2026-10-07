@@ -96,11 +96,14 @@ sealed class PatchBundleSource(
             }
             write(staging)
             requireNonEmptyBundleFile(staging, context)
-            staging.setReadOnly()
-            // Replaces the installed bundle in a single step, so readers see either the old
-            // file or the new one
-            if (!staging.renameTo(patchesFile)) {
-                throw IOException("$context could not replace the installed patch bundle")
+            check(
+                replaceBundleFromTempFile(
+                    tempFile = staging,
+                    target = patchesFile,
+                    validate = { requireNonEmptyBundleFile(it, context) }
+                )
+            ) {
+                "$context could not move the staged patch bundle into place"
             }
         } catch (t: Throwable) {
             try {
