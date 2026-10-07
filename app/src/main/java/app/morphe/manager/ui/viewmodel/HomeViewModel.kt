@@ -2443,7 +2443,11 @@ class HomeViewModel(
      * identify the base entry by the "base" substring and filter ABI/density splits.
      */
     private fun createApksArchive(info: InstalledApkInfo, output: File) {
-        output.parentFile?.mkdirs()
+        output.parentFile?.let { parent ->
+            check(parent.mkdirs() || parent.isDirectory) {
+                "Could not create APKS archive directory: ${parent.absolutePath}"
+            }
+        }
         ZipOutputStream(output.outputStream().buffered()).use { zip ->
             fun addEntry(file: File) {
                 // APKs are already compressed ZIPs - use STORED to avoid wasting CPU on deflate.
