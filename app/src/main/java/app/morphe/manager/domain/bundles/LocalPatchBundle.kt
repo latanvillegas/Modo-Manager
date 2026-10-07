@@ -98,7 +98,9 @@ internal fun replaceBundleFromTempFile(
         }
     }
 
-    tempFile.setReadOnly()
+    check(tempFile.setReadOnly() || !tempFile.canWrite()) {
+        "Could not make patch bundle candidate read-only before installation"
+    }
     if (!tempFile.renameTo(target)) {
         runCatching { tempFile.setWritable(true, true) }
         if (hadTarget) {
