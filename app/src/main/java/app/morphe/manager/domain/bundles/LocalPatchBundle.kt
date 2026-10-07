@@ -81,6 +81,10 @@ internal fun replaceBundleFromTempFile(
         "Could not create patch bundle import directory"
     }
 
+    // Reject a bad candidate before touching the installed bundle. Validation may delete the
+    // candidate on failure, while the last known-good patches.jar remains byte-for-byte intact.
+    validate(tempFile)
+
     if (backup.exists()) {
         check(backup.delete() || !backup.exists()) {
             "Could not remove stale patch bundle import backup: ${backup.absolutePath}"
@@ -106,7 +110,6 @@ internal fun replaceBundleFromTempFile(
     }
 
     try {
-        validate(target)
         if (hadTarget) {
             check(backup.delete() || !backup.exists()) {
                 "Could not remove patch bundle import backup after successful replacement"
