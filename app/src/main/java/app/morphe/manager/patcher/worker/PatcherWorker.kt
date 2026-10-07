@@ -566,10 +566,13 @@ class PatcherWorker(
             patchingDurationMs = (System.nanoTime() - patchingStartNanos) / 1_000_000
             val verificationStartNanos = System.nanoTime()
 
-            // Patcher output is 16 KiB aligned, but any post-patch ZIP rewrite can move STORED
-            // native libraries. Never sign/export an APK that Android cannot mmap safely.
+            // Android requires resources.arsc to be STORED and 4-byte aligned, while direct-load
+            // native libraries need 16 KiB data offsets. Normalize both in one ZIP rewrite before
+            // signing; the alignment-preserving signer must leave these local-entry offsets intact.
             if (NativeLibraryAlignment.alignStoredLibraries(patchedApk)) {
-                args.logger.info("[Postflight] Realigned STORED native libraries to 16 KiB boundaries")
+                args.logger.info(
+                    "[Postflight] Normalized resources.arsc (STORED/4-byte) and native library alignment"
+                )
             }
             NativeLibraryAlignment.requireAligned(patchedApk)
 
