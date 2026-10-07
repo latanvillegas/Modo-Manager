@@ -546,7 +546,10 @@ fun ExpertModeDialog(
                         onProceed()
                     }
                 },
-                enabled = totalSelectedCount > 0,
+                // An empty selection is a valid repack/sign run. Besides being useful for
+                // diagnostics, keeping this path generic lets the Manager validate its APK
+                // pipeline independently of any particular patch bundle.
+                enabled = true,
                 icon = Icons.Outlined.AutoFixHigh,
                 modifier = Modifier.fillMaxWidth(),
             )
