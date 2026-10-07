@@ -30,10 +30,25 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
+      - name: Setup persistent debug signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          test -n "$KEYSTORE_B64" || {
+            echo "::error::KEYSTORE_B64 is not configured. Refusing to create an APK with an ephemeral signing identity."
+            exit 1
+          }
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "${RUNNER_TEMP}/modo-manager-debug.jks"
+          test -s "${RUNNER_TEMP}/modo-manager-debug.jks"
+
       - name: Test and build debug APK
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           _JAVA_OPTIONS: -Djava.awt.headless=true
+          MODO_DEBUG_KEYSTORE: ${{ runner.temp }}/modo-manager-debug.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEYSTORE_ENTRY_ALIAS: ${{ secrets.KEYSTORE_ENTRY_ALIAS }}
+          KEYSTORE_ENTRY_PASSWORD: ${{ secrets.KEYSTORE_ENTRY_PASSWORD }}
         run: ./gradlew :app:testDebugUnitTest :app:assembleDebug --stacktrace
 
       - name: Collect APK
