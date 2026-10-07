@@ -42,62 +42,12 @@ class LocalPatchBundle(
         totalBytes: Long? = null,
         onProgress: ((bytesRead: Long, totalBytes: Long?) -> Unit)? = null
     ): Boolean = withContext(Dispatchers.IO) {
-        val target = patchesJarFile
-        val backup = File(target.parentFile, "${target.name}.import-backup")
-        target.parentFile?.mkdirs()
-
-        if (backup.exists()) {
-            check(backup.delete() || !backup.exists()) {
-                "Could not remove stale patch bundle import backup: ${backup.absolutePath}"
-            }
-        }
-
-        val hadTarget = target.exists()
-        if (hadTarget) {
-            check(target.renameTo(backup)) {
-                "Could not preserve installed patch bundle before import"
-            }
-        }
-
-        // Made read-only before the swap rather than after: a concurrent reader must never see
-        // a writable dex container at the installed path.
-        tempFile.setReadOnly()
-        if (!tempFile.renameTo(target)) {
-            runCatching { tempFile.setWritable(true, true) }
-            if (hadTarget) {
-                check(backup.renameTo(target)) {
-                    "Could not restore installed patch bundle after fast import was unavailable"
-                }
-            }
-            return@withContext false
-        }
-
-        try {
-            requireNonEmptyBundleFile(target, "Importing patch bundle")
-            if (hadTarget) {
-                check(backup.delete() || !backup.exists()) {
-                    "Could not remove patch bundle import backup after successful replacement"
-                }
-            }
-            onProgress?.invoke(0L, totalBytes)
-            true
-        } catch (error: Throwable) {
-            try {
-                runCatching { target.setWritable(true, true) }
-                if (target.exists()) {
-                    check(target.delete() || !target.exists()) {
-                        "Could not remove rejected patch bundle before rollback"
-                    }
-                }
-                if (hadTarget) {
-                    check(backup.renameTo(target)) {
-                        "Could not restore installed patch bundle after failed import"
-                    }
-                }
-            } catch (rollbackError: Throwable) {
-                error.addSuppressed(rollbackError)
-            }
-            throw error
+        replaceBundleFromTempFile(
+            tempFile = tempFile,
+            target = patchesJarFile,
+            validate = { requireNonEmptyBundleFile(it, "Importing patch bundle") }
+        ).also { moved ->
+            if (moved) onProgress?.invoke(0L, totalBytes)
         }
     }
 
@@ -118,4 +68,67 @@ class LocalPatchBundle(
         directory,
         enabled
     )
+}
+
+
+internal fun replaceBundleFromTempFile(
+    tempFile: File,
+    target: File,
+    validate: (File) -> Unit,
+): Boolean {
+    val backup = File(target.parentFile, "${target.name}.import-backup")
+    check(target.parentFile?.mkdirs() != false || target.parentFile?.isDirectory == true) {
+        "Could not create patch bundle import directory"
+    }
+
+    if (backup.exists()) {
+        check(backup.delete() || !backup.exists()) {
+            "Could not remove stale patch bundle import backup: ${backup.absolutePath}"
+        }
+    }
+
+    val hadTarget = target.exists()
+    if (hadTarget) {
+        check(target.renameTo(backup)) {
+            "Could not preserve installed patch bundle before import"
+        }
+    }
+
+    tempFile.setReadOnly()
+    if (!tempFile.renameTo(target)) {
+        runCatching { tempFile.setWritable(true, true) }
+        if (hadTarget) {
+            check(backup.renameTo(target)) {
+                "Could not restore installed patch bundle after fast import was unavailable"
+            }
+        }
+        return false
+    }
+
+    try {
+        validate(target)
+        if (hadTarget) {
+            check(backup.delete() || !backup.exists()) {
+                "Could not remove patch bundle import backup after successful replacement"
+            }
+        }
+        return true
+    } catch (error: Throwable) {
+        try {
+            runCatching { target.setWritable(true, true) }
+            if (target.exists()) {
+                check(target.delete() || !target.exists()) {
+                    "Could not remove rejected patch bundle before rollback"
+                }
+            }
+            if (hadTarget) {
+                check(backup.renameTo(target)) {
+                    "Could not restore installed patch bundle after failed import"
+                }
+            }
+        } catch (rollbackError: Throwable) {
+            error.addSuppressed(rollbackError)
+        }
+        throw error
+    }
 }
