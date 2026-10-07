@@ -544,7 +544,9 @@ class BatchPatchCoordinator(
      */
     private fun materialize(item: BatchPatchItem): SelectedApp? {
         val source = item.source ?: return null
-        workspace.mkdirs()
+        check(workspace.mkdirs() || workspace.isDirectory) {
+            "Could not create batch workspace: ${workspace.absolutePath}"
+        }
 
         return when (source) {
             is BatchApkSource.SavedOriginal -> SelectedApp.Local(
@@ -563,25 +565,33 @@ class BatchPatchCoordinator(
                 temporary = false
             )
 
-            is BatchApkSource.Installed -> try {
-                val target = if (source.isSplit) {
-                    workspace.resolve("${item.packageName}_installed.apks")
-                        .also { createApksArchive(source, it) }
-                } else {
-                    workspace.resolve("${item.packageName}_installed.apk")
-                        .also { File(source.apkPath).copyTo(it, overwrite = true) }
+            is BatchApkSource.Installed -> {
+                var target: File? = null
+                try {
+                    target = if (source.isSplit) {
+                        workspace.resolve("${item.packageName}_installed.apks")
+                            .also { createApksArchive(source, it) }
+                    } else {
+                        workspace.resolve("${item.packageName}_installed.apk")
+                            .also { File(source.apkPath).copyTo(it, overwrite = true) }
+                    }
+                    SelectedApp.Local(
+                        packageName = item.packageName,
+                        version = source.version,
+                        versionCode = source.versionCode,
+                        file = target,
+                        temporary = true,
+                        fromInstalledDevice = true
+                    )
+                } catch (e: Exception) {
+                    target?.let { partial ->
+                        if (partial.exists() && !partial.delete() && partial.exists()) {
+                            Log.w(TAG, "Failed to delete partial batch input: ${partial.absolutePath}")
+                        }
+                    }
+                    Log.e(TAG, "Failed to materialize installed APK for ${item.packageName}", e)
+                    null
                 }
-                SelectedApp.Local(
-                    packageName = item.packageName,
-                    version = source.version,
-                    versionCode = source.versionCode,
-                    file = target,
-                    temporary = true,
-                    fromInstalledDevice = true
-                )
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to materialize installed APK for ${item.packageName}", e)
-                null
             }
         }
     }
