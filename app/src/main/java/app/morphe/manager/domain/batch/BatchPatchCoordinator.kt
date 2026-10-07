@@ -668,7 +668,11 @@ class BatchPatchCoordinator(
 
         val retained = fs.getPatchedAppFile(currentPackageName, version)
         val stored = runCatching {
-            retained.parentFile?.mkdirs()
+            retained.parentFile?.let { parent ->
+                check(parent.mkdirs() || parent.isDirectory) {
+                    "Could not create retained APK directory: ${parent.absolutePath}"
+                }
+            }
             // Staged, so a reader that refreshes while the copy runs never opens a half
             // written archive at the path the app already reports as the saved build
             copyThroughStaging(outputFile, retained)
@@ -722,7 +726,11 @@ class BatchPatchCoordinator(
      * Entries are stored uncompressed because APKs are already compressed archives.
      */
     private fun createApksArchive(source: BatchApkSource.Installed, output: File) {
-        output.parentFile?.mkdirs()
+        output.parentFile?.let { parent ->
+            check(parent.mkdirs() || parent.isDirectory) {
+                "Could not create batch archive directory: ${parent.absolutePath}"
+            }
+        }
         ZipOutputStream(output.outputStream().buffered()).use { zip ->
             fun addEntry(file: File) {
                 val crc = CRC32()
