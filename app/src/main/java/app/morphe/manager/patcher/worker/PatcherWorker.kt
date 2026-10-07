@@ -550,19 +550,34 @@ class PatcherWorker(
 
             preparationDurationMs = (System.nanoTime() - phaseStartNanos) / 1_000_000
             val patchingStartNanos = System.nanoTime()
-            executePatchingRuntime(
-                useProcessRuntime = useProcessRuntime,
-                runtimeInputFile = runtimeInputFile,
-                patchedApk = patchedApk,
-                args = args,
-                options = options,
-                stripNativeLibs = stripNativeLibs,
-                onPatchCompleted = onPatchCompleted,
-                onProgress = ::updateProgress,
-                onMergedApkReady = onMergedApkReady,
-                onRestart = onRestart,
-            )
-            args.logger.info("[Runtime] patcher execution returned to worker")
+            val zeroPatchPassthrough =
+                args.selectedPatches.values.all { it.isEmpty() } &&
+                    options.values.all { it.isEmpty() } &&
+                    !inputIsSplitArchive &&
+                    !stripNativeLibs &&
+                    nativePayloads.isEmpty()
+
+            if (zeroPatchPassthrough) {
+                // A true zero-patch diagnostic must not instantiate Morphe Patcher: Session.run()
+                // rewrites DEX/resources even with an empty patch list. Preserve the input bytes
+                // here so postflight/alignment/signing can be isolated from patcher rewriting.
+                runtimeInputFile.copyTo(patchedApk, overwrite = true)
+                args.logger.info("[Runtime] zero-patch passthrough: patcher rewrite skipped")
+            } else {
+                executePatchingRuntime(
+                    useProcessRuntime = useProcessRuntime,
+                    runtimeInputFile = runtimeInputFile,
+                    patchedApk = patchedApk,
+                    args = args,
+                    options = options,
+                    stripNativeLibs = stripNativeLibs,
+                    onPatchCompleted = onPatchCompleted,
+                    onProgress = ::updateProgress,
+                    onMergedApkReady = onMergedApkReady,
+                    onRestart = onRestart,
+                )
+                args.logger.info("[Runtime] patcher execution returned to worker")
+            }
             patchingDurationMs = (System.nanoTime() - patchingStartNanos) / 1_000_000
             val verificationStartNanos = System.nanoTime()
 
