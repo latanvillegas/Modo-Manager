@@ -653,29 +653,29 @@ class BatchPatcherViewModel : ViewModel(), KoinComponent, ApkDownloadHelperHost 
     }
 
     private fun copyToWorkspace(uri: Uri): File? {
-        var target: File? = null
+        var cleanupTarget: File? = null
         return try {
             val displayName = app.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (cursor.moveToFirst() && index != -1) cursor.getString(index) else null
-        }
-        val extension = displayName?.substringAfterLast('.', "apk")?.lowercase() ?: "apk"
-            target = File.createTempFile("batch_input_", ".$extension", fs.uiTempDir)
-            val outputFile = target
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (cursor.moveToFirst() && index != -1) cursor.getString(index) else null
+            }
+            val extension = displayName?.substringAfterLast('.', "apk")?.lowercase() ?: "apk"
+            val target = File.createTempFile("batch_input_", ".$extension", fs.uiTempDir)
+            cleanupTarget = target
 
-        val copied = app.contentResolver.openInputStream(uri)?.use { input ->
-            outputFile.outputStream().use { output -> input.copyTo(output) }
-        }
-        if (copied == null || copied == 0L) {
-                if (!outputFile.delete() && outputFile.exists()) {
-                    Log.w(tag, "Failed to delete empty batch input: ${outputFile.absolutePath}")
+            val copied = app.contentResolver.openInputStream(uri)?.use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
+            }
+            if (copied == null || copied == 0L) {
+                if (!target.delete() && target.exists()) {
+                    Log.w(tag, "Failed to delete empty batch input: ${target.absolutePath}")
                 }
                 null
             } else {
-                outputFile
+                target
             }
         } catch (e: Exception) {
-            target?.let { failed ->
+            cleanupTarget?.let { failed ->
                 if (!failed.delete() && failed.exists()) {
                     Log.w(tag, "Failed to delete batch input after copy error: ${failed.absolutePath}")
                 }
