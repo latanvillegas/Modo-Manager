@@ -37,6 +37,41 @@ class NativeLibraryAlignmentTest {
         }
     }
     @Test
+    fun `realigns stored native library with inherited extra metadata`() {
+        val apk = File.createTempFile("morphe-realignment-extra-", ".apk")
+        val bytes = ByteArray(8193) { (it and 0xff).toByte() }
+        try {
+            val crc = CRC32().apply { update(bytes) }
+            ZipOutputStream(apk.outputStream()).use { zip ->
+                zip.putNextEntry(ZipEntry("assets/prefix").apply { method = ZipEntry.DEFLATED })
+                zip.write(ByteArray(211) { 3 })
+                zip.closeEntry()
+                zip.putNextEntry(ZipEntry("lib/arm64-v8a/libsample.so").apply {
+                    method = ZipEntry.STORED
+                    size = bytes.size.toLong()
+                    compressedSize = bytes.size.toLong()
+                    this.crc = crc.value
+                    extra = byteArrayOf(0x34, 0x12, 0x05, 0x00, 1, 2, 3, 4, 5)
+                })
+                zip.write(bytes)
+                zip.closeEntry()
+            }
+
+            assertTrue(NativeLibraryAlignment.misalignedStoredLibraries(apk).isNotEmpty())
+            assertTrue(NativeLibraryAlignment.alignStoredLibraries(apk))
+            NativeLibraryAlignment.requireAligned(apk)
+
+            ZipFile(apk).use { zip ->
+                val entry = zip.getEntry("lib/arm64-v8a/libsample.so")
+                assertEquals(ZipEntry.STORED, entry.method)
+                assertContentEquals(bytes, zip.getInputStream(entry).readBytes())
+            }
+        } finally {
+            apk.delete()
+        }
+    }
+
+    @Test
     fun `realigns stored native library without changing payload`() {
         val apk = File.createTempFile("morphe-realignment-", ".apk")
         val bytes = ByteArray(4097) { (it and 0xff).toByte() }
