@@ -59,6 +59,7 @@ dependencies {
 
     // Morphe
     implementation(libs.arsclib)
+    implementation(libs.apksig)
     implementation(libs.morphe.patcher)
     implementation(libs.morphe.library)
 
