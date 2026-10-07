@@ -5,7 +5,6 @@ import android.content.Context
 import android.util.Log
 import app.morphe.manager.domain.apk.apkFileStampOrNull
 import app.morphe.patcher.apk.ApkSigner
-import app.morphe.patcher.apk.ApkUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.*
@@ -65,12 +64,14 @@ class KeystoreManager(app: Application, private val prefs: PreferencesManager) {
         prefs.keystorePassword.value = keystorePw
     }
 
-    private suspend fun signingDetails(path: File = keystorePath) = ApkUtils.KeyStoreDetails(
-        keyStore = path,
-        keyStorePassword = prefs.keystorePassword.get().ifEmpty { null },
-        alias = prefs.keystoreAlias.get(),
-        password = prefs.keystorePass.get()
-    )
+    private suspend fun signApkPreservingAlignment(input: File, output: File, alias: String) {
+        val pair = ApkSigner.readPrivateKeyCertificatePair(
+            readKeyStore(),
+            alias,
+            prefs.keystorePass.get()
+        )
+        AlignmentPreservingApkSigner.sign(input, output, alias, pair)
+    }
 
     /**
      * Signs [input] into [output].
@@ -83,7 +84,7 @@ class KeystoreManager(app: Application, private val prefs: PreferencesManager) {
     suspend fun sign(input: File, output: File): SigningResult = withContext(Dispatchers.Default) {
         val alias = prefs.keystoreAlias.get()
         try {
-            ApkUtils.signApk(input, output, alias, signingDetails())
+            signApkPreservingAlignment(input, output, alias)
             SigningResult(repackagedArchive = false)
         } catch (e: Exception) {
             if (!e.isMalformedArchive()) throw e
@@ -94,7 +95,7 @@ class KeystoreManager(app: Application, private val prefs: PreferencesManager) {
             val sanitized = sanitizeZipIfNeeded(input).takeIf { it != input } ?: throw e
 
             try {
-                ApkUtils.signApk(sanitized, output, alias, signingDetails())
+                signApkPreservingAlignment(sanitized, output, alias)
                 SigningResult(repackagedArchive = true)
             } catch (retry: Exception) {
                 // The rejection that sent us down this path is what names the archive as the
