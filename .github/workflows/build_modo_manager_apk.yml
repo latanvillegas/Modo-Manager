@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build-debug-apk:
-    name: Build installable debug APK
+    name: Build optimized installable APK
     runs-on: ubuntu-latest
 
     steps:
@@ -38,31 +38,30 @@ jobs:
             echo "::error::KEYSTORE_B64 is not configured. Refusing to create an APK with an ephemeral signing identity."
             exit 1
           }
-          printf '%s' "$KEYSTORE_B64" | base64 -d > "${RUNNER_TEMP}/modo-manager-debug.jks"
-          test -s "${RUNNER_TEMP}/modo-manager-debug.jks"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > app/keystore.jks
+          test -s app/keystore.jks
 
-      - name: Test and build debug APK
+      - name: Test and build optimized APK
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           _JAVA_OPTIONS: -Djava.awt.headless=true
-          MODO_DEBUG_KEYSTORE: ${{ runner.temp }}/modo-manager-debug.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEYSTORE_ENTRY_ALIAS: ${{ secrets.KEYSTORE_ENTRY_ALIAS }}
           KEYSTORE_ENTRY_PASSWORD: ${{ secrets.KEYSTORE_ENTRY_PASSWORD }}
-        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug --stacktrace
+        run: ./gradlew :app:testDebugUnitTest :app:assembleRelease -PnoProguard=false --stacktrace
 
       - name: Collect APK
         run: |
           mkdir -p dist
-          APK=$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)
+          APK=$(find app/build/outputs/apk/release -type f -name '*.apk' | head -n 1)
           test -n "$APK"
-          cp "$APK" dist/Modo-Manager-debug.apk
-          ls -lh dist/Modo-Manager-debug.apk
+          cp "$APK" dist/Modo-Manager.apk
+          ls -lh dist/Modo-Manager.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7
         with:
-          name: Modo-Manager-debug-apk
-          path: dist/Modo-Manager-debug.apk
+          name: Modo-Manager-apk
+          path: dist/Modo-Manager.apk
           if-no-files-found: error
           retention-days: 1
