@@ -58,7 +58,7 @@ dependencies {
     ksp(libs.room.compiler)
 
     // Morphe
-    implementation(libs.arsclib)
+    // morphe-patcher 1.15+ provides its compatible ARSCLib fork transitively.
     implementation(libs.morphe.patcher)
     implementation(libs.morphe.library)
 
