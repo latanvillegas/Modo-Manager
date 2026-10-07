@@ -126,9 +126,15 @@ class Session(
             }
         }
 
-        val patched = tempDir.resolve("result.apk")
-        withContext(Dispatchers.IO) {
-            Files.copy(input.toPath(), patched.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        // Morphe Patcher may produce a resource-compiled APK as part of patcher.get().
+        // That artifact is the authoritative base for PatchResult.applyTo(); applying the result
+        // to a fresh copy of the original APK discards the patcher's resource rewrite and can
+        // leave bytecode/resources out of sync. Match upstream Manager behavior and only fall
+        // back to the original APK when no resource APK was produced.
+        val patched = result.resources.resourcesApk ?: tempDir.resolve("result.apk").also { fallback ->
+            withContext(Dispatchers.IO) {
+                Files.copy(input.toPath(), fallback.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
         }
 
         withContext(Dispatchers.Default) {
