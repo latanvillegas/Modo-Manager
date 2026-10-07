@@ -801,7 +801,11 @@ class PatcherViewModel(
         val savedCopy = fs.getPatchedAppFile(finalPackageName, finalVersion)
         if (savePatchedEnabled) {
             try {
-                savedCopy.parentFile?.mkdirs()
+                savedCopy.parentFile?.let { parent ->
+                    if (!parent.mkdirs() && !parent.isDirectory) {
+                        throw IOException("Could not create saved APK directory: ${parent.absolutePath}")
+                    }
+                }
                 // Staged, so a reader that refreshes while the copy runs never opens a half
                 // written archive at the path the app already reports as the saved build
                 copyThroughStaging(outputFile, savedCopy)
