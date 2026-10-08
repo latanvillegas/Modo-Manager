@@ -5,6 +5,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: modo-manager-dev-${{ github.ref }}
@@ -34,6 +35,8 @@ jobs:
       - name: Test and build Dev APK
         env:
           _JAVA_OPTIONS: -Djava.awt.headless=true
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./gradlew :app:testDebugUnitTest :app:assembleDebug --stacktrace
 
       - name: Verify Dev APK signature and 16 KiB alignment
