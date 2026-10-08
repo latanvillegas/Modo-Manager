@@ -15,7 +15,7 @@ chmod +x ./gradlew
 ./gradlew --stop || true
 ./gradlew assembleRelease --stacktrace
 
-# 3. Find the built APK and rename it to the expected release name
+# 3. Locate the newly built APK. Do not assign its public release name yet.
 RELEASE_DIR="app/build/outputs/apk/release"
 APK_SRC=$(find "${RELEASE_DIR}" -name '*-release.apk' | head -1)
 
@@ -24,10 +24,6 @@ if [ -z "${APK_SRC}" ]; then
   ls -la "${RELEASE_DIR}" || true
   exit 1
 fi
-
-APK_DST="${RELEASE_DIR}/morphe-manager-${VERSION}.apk"
-mv "${APK_SRC}" "${APK_DST}"
-echo "Renamed APK to ${APK_DST}"
 
 # 4. Verify the Android signature against the production keystore before publishing.
 #    A release build must never silently fall back to the Android debug key.
@@ -53,9 +49,9 @@ if [[ -z "$APKSIGNER" ]]; then
   exit 1
 fi
 
-"$APKSIGNER" verify --verbose "$APK_DST"
-ACTUAL_CERT=$("$APKSIGNER" verify --print-certs "$APK_DST" |
-  sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1 |
+"$APKSIGNER" verify --verbose "$APK_SRC"
+ACTUAL_CERT=$("$APKSIGNER" verify --print-certs "$APK_SRC" |
+  sed -n 's/^Signer #1 certificate SHA-256 digest: //p' |
   tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]')
 EXPECTED_CERT=$(keytool -exportcert -keystore app/keystore.jks \
   -storepass:env KEYSTORE_PASSWORD -alias "$KEYSTORE_ENTRY_ALIAS" |
@@ -66,7 +62,12 @@ if [[ -z "$ACTUAL_CERT" || -z "$EXPECTED_CERT" || "$ACTUAL_CERT" != "$EXPECTED_C
 fi
 echo "Verified APK signature and production signing certificate"
 
-# 5. GPG-sign the APK
+# 5. Assign the final release filename only after verification.
+APK_DST="${RELEASE_DIR}/morphe-manager-${VERSION}.apk"
+mv -- "${APK_SRC}" "${APK_DST}"
+echo "Renamed verified APK to ${APK_DST}"
+
+# 6. GPG-sign the APK
 gpg --armor --detach-sign "${APK_DST}"
 echo "Signed ${APK_DST}"
 
