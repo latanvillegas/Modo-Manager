@@ -37,9 +37,24 @@ jobs:
       - name: Cache Gradle
         uses: burrunan/gradle-cache-action@v3
 
-      - name: Setup keystore
+      - name: Validate production keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEYSTORE_ENTRY_ALIAS: ${{ secrets.KEYSTORE_ENTRY_ALIAS }}
+          KEYSTORE_ENTRY_PASSWORD: ${{ secrets.KEYSTORE_ENTRY_PASSWORD }}
         run: |
-          echo "${{ secrets.KEYSTORE_B64 }}" | base64 -d > app/keystore.jks
+          set -euo pipefail
+          for name in KEYSTORE_B64 KEYSTORE_PASSWORD KEYSTORE_ENTRY_ALIAS KEYSTORE_ENTRY_PASSWORD; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing required production signing credential: ${name}"
+              exit 1
+            fi
+          done
+          umask 077
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > app/keystore.jks
+          test -s app/keystore.jks || { echo "::error::Production keystore is empty"; exit 1; }
+          keytool -list -keystore app/keystore.jks -storepass:env KEYSTORE_PASSWORD -alias "$KEYSTORE_ENTRY_ALIAS" >/dev/null
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
