@@ -50,13 +50,18 @@ if [[ -z "$APKSIGNER" ]]; then
 fi
 
 "$APKSIGNER" verify --verbose "$APK_SRC"
-ACTUAL_CERT=$("$APKSIGNER" verify --print-certs "$APK_SRC" |
-  sed -n 's/^Signer #1 certificate SHA-256 digest: //p' |
-  tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]')
+# Accept the certificate output of both Android SDK apksigner and Termux apksigner.
+# Multiple signature schemes can report the same certificate; distinct certificates
+# are not accepted. Never concatenate fingerprints into a single digest.
+CERT_LINES=$("$APKSIGNER" verify --print-certs "$APK_SRC")
+CERTS=$(printf '%s\n' "$CERT_LINES" |
+  sed -nE 's/^(Signer #[0-9]+|V[0-9]+(\\.[0-9]+)? Signer): certificate SHA-256 digest: ([[:xdigit:]]{64})$/\\3/p' |
+  tr '[:upper:]' '[:lower:]' | sort -u)
+ACTUAL_CERT="$CERTS"
 EXPECTED_CERT=$(keytool -exportcert -keystore app/keystore.jks \
   -storepass:env KEYSTORE_PASSWORD -alias "$KEYSTORE_ENTRY_ALIAS" |
-  openssl dgst -sha256 -binary | od -An -tx1 | tr -d '[:space:]')
-if [[ -z "$ACTUAL_CERT" || -z "$EXPECTED_CERT" || "$ACTUAL_CERT" != "$EXPECTED_CERT" ]]; then
+  openssl dgst -sha256 -binary | od -An -v -tx1 | tr -d '[:space:]')
+if [[ ! "$ACTUAL_CERT" =~ ^[0-9a-f]{64}$ || ! "$EXPECTED_CERT" =~ ^[0-9a-f]{64}$ || "$ACTUAL_CERT" != "$EXPECTED_CERT" ]]; then
   echo "ERROR: APK signer does not match the production keystore" >&2
   exit 1
 fi
