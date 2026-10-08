@@ -229,7 +229,7 @@ fun InstalledAppInfoDialog(
 
     // Export file name
     val exportFileName = remember(installedApp?.currentPackageName, appInfo?.versionName, appliedBundles) {
-        val app = installedApp ?: return@remember "morphe_export.apk"
+        val app = installedApp ?: return@remember "modo_export.apk"
         ExportNameFormatter.format(null, PatchedAppExportData(
             appName = appInfo?.applicationInfo?.loadLabel(context.packageManager)?.toString(),
             packageName = app.currentPackageName,

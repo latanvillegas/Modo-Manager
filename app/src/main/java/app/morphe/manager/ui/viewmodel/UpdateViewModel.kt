@@ -107,7 +107,7 @@ class UpdateViewModel : ViewModel(), KoinComponent {
     private fun resolveUpdate() = viewModelScope.launch {
         isCheckingForUpdate = true
         try {
-            uiSafe(app, R.string.download_manager_failed, "Failed to download Morphe Manager") {
+            uiSafe(app, R.string.download_manager_failed, "Failed to download Modo Manager") {
                 releaseInfo = managerUpdateRepository.getOrRefresh()
             }
         } finally {

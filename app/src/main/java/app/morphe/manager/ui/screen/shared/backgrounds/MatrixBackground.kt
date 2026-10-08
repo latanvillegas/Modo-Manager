@@ -44,7 +44,7 @@ private val RANDOM_GLYPHS = listOf(
 
 // Now and then a stream spells something out instead of falling as code
 private val PHRASES = listOf(
-    "USE MORPHE",
+    "USE MODO MANAGER",
     "NO ADS",
     "WAKE UP",
     "PATCHED"

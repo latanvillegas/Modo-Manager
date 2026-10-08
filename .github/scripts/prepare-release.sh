@@ -82,7 +82,7 @@ echo "Verified APK alignment for 16 KiB pages"
 
 
 # 5. Assign the final release filename only after verification.
-APK_DST="${RELEASE_DIR}/morphe-manager-${VERSION}.apk"
+APK_DST="${RELEASE_DIR}/modo-manager-${VERSION}.apk"
 mv -- "${APK_SRC}" "${APK_DST}"
 echo "Renamed verified APK to ${APK_DST}"
 

@@ -421,7 +421,7 @@ class ImportExportViewModel(
      * Filename for the all-selections export file.
      */
     fun getAllSelectionsExportFileName(): String =
-        FilenameUtils.timestamped("morphe_all_selections.json")
+        FilenameUtils.timestamped("modo_all_selections.json")
 
     /**
      * Import patch selections and options from a file.
@@ -550,11 +550,11 @@ class ImportExportViewModel(
     fun getPackageBundleDataExportFileName(packageName: String, bundleUid: Int, bundleName: String?): String {
         val bundle = bundleName?.replace(" ", "_")?.take(20) ?: "bundle_$bundleUid"
         val pkg = packageName.substringAfterLast('.').take(15)
-        return FilenameUtils.timestamped("morphe_${bundle}_${pkg}.json")
+        return FilenameUtils.timestamped("modo_${bundle}_${pkg}.json")
     }
 
     val debugLogFileName: String
-        get() = FilenameUtils.timestamped("morphe_logcat.log")
+        get() = FilenameUtils.timestamped("modo_logcat.log")
 
     /**
      * Writes the debug log content to [writer]. Returns the logcat exit code.
@@ -566,7 +566,7 @@ class ImportExportViewModel(
             app.packageManager.getPackageInfo(app.packageName, 0).versionName
         }.getOrDefault("unknown")
 
-        writer.write("=== Morphe Manager Debug Log ===\n")
+        writer.write("=== Modo Manager Debug Log ===\n")
         writer.write("Date       : ${LocalDateTime.now()}\n")
         writer.write("Version    : $versionName\n")
 
@@ -673,7 +673,7 @@ class ImportExportViewModel(
     fun exportKeystoreToDownloads() = viewModelScope.launch {
         uiSafe(app, R.string.settings_system_export_keystore_failed, "Failed to export keystore to Downloads") {
             withContext(Dispatchers.IO) {
-                val stream = openDownloadsOutputStream("Morphe.keystore", BIN_MIMETYPE)
+                val stream = openDownloadsOutputStream("Modo-Manager.keystore", BIN_MIMETYPE)
                     ?: throw IllegalStateException("Cannot open Downloads output stream")
                 stream.use { keystoreManager.export(it) }
             }
@@ -688,7 +688,7 @@ class ImportExportViewModel(
         uiSafe(app, R.string.settings_system_export_manager_settings_fail, "Failed to export settings to Downloads") {
             val exportFile = managerSettingsExportFile()
             withContext(Dispatchers.IO) {
-                val stream = openDownloadsOutputStream("morphe_manager_settings.json", JSON_MIMETYPE)
+                val stream = openDownloadsOutputStream("modo_manager_settings.json", JSON_MIMETYPE)
                     ?: throw IllegalStateException("Cannot open Downloads output stream")
                 stream.use { settingsJson.encodeToStream(exportFile, it) }
             }

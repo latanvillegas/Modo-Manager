@@ -308,12 +308,12 @@ fun SettingsScreen(
                 onImportKeystore = { importKeystoreLauncher() },
                 onExportKeystore = {
                     if (isTV) importExportViewModel.exportKeystoreToDownloads()
-                    else exportKeystoreLauncher.launch("Morphe.keystore")
+                    else exportKeystoreLauncher.launch("Modo-Manager.keystore")
                 },
                 onImportSettings = { importSettingsLauncher() },
                 onExportSettings = {
                     if (isTV) importExportViewModel.exportManagerSettingsToDownloads()
-                    else exportSettingsLauncher.launch("morphe_manager_settings.json")
+                    else exportSettingsLauncher.launch("modo_manager_settings.json")
                 },
                 onExportDebugLogs = {
                     if (isTV) importExportViewModel.exportDebugLogsToDownloads()
