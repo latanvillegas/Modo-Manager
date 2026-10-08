@@ -67,6 +67,20 @@ if [[ ! "$ACTUAL_CERT" =~ ^[0-9a-f]{64}$ || ! "$EXPECTED_CERT" =~ ^[0-9a-f]{64}$
 fi
 echo "Verified APK signature and production signing certificate"
 
+# Verify APK alignment without modifying the already signed artifact.
+# Never run zipalign in modification mode after APK signing.
+ZIPALIGN=$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 2 -type f -name zipalign | sort -V | tail -n 1)
+if [[ -z "$ZIPALIGN" ]]; then
+  echo "ERROR: zipalign not found" >&2
+  exit 1
+fi
+if ! "$ZIPALIGN" -c -P 16 4 "$APK_SRC"; then
+  echo "ERROR: APK alignment verification failed (16 KiB)" >&2
+  exit 1
+fi
+echo "Verified APK alignment for 16 KiB pages"
+
+
 # 5. Assign the final release filename only after verification.
 APK_DST="${RELEASE_DIR}/morphe-manager-${VERSION}.apk"
 mv -- "${APK_SRC}" "${APK_DST}"
