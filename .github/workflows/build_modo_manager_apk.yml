@@ -50,6 +50,65 @@ jobs:
           KEYSTORE_ENTRY_PASSWORD: ${{ secrets.KEYSTORE_ENTRY_PASSWORD }}
         run: ./gradlew :app:testDebugUnitTest :app:assembleRelease -PnoProguard=false --stacktrace
 
+      - name: Verify APK signing and 16 KiB alignment
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEYSTORE_ENTRY_ALIAS: ${{ secrets.KEYSTORE_ENTRY_ALIAS }}
+          KEYSTORE_ENTRY_PASSWORD: ${{ secrets.KEYSTORE_ENTRY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for name in KEYSTORE_PASSWORD KEYSTORE_ENTRY_ALIAS KEYSTORE_ENTRY_PASSWORD; do
+            test -n "${!name:-}" || {
+              echo "::error::Missing signing credential: $name"
+              exit 1
+            }
+          done
+
+          test -s app/keystore.jks
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$SDK"
+          test -d "$SDK/build-tools"
+
+          APKSIGNER=$(find "$SDK/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)
+          ZIPALIGN=$(find "$SDK/build-tools" -maxdepth 2 -type f -name zipalign | sort -V | tail -n 1)
+          test -n "$APKSIGNER"
+          test -n "$ZIPALIGN"
+
+          APK=$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)
+          test -n "$APK"
+
+          "$APKSIGNER" verify --verbose "$APK"
+
+          CERT_LINES=$("$APKSIGNER" verify --print-certs "$APK")
+          ACTUAL_CERT=$(printf '%s\n' "$CERT_LINES" |
+            sed -nE 's/^(Signer #[0-9]+|V[0-9]+(\.[0-9]+)? Signer:?) certificate SHA-256 digest: ([[:xdigit:]]{64})$/\3/p' |
+            tr '[:upper:]' '[:lower:]' | sort -u)
+
+          EXPECTED_CERT=$(keytool -exportcert \
+            -keystore app/keystore.jks \
+            -storepass:env KEYSTORE_PASSWORD \
+            -alias "$KEYSTORE_ENTRY_ALIAS" |
+            openssl dgst -sha256 -binary |
+            od -An -v -tx1 | tr -d '[:space:]')
+
+          if [[ ! "$ACTUAL_CERT" =~ ^[0-9a-f]{64}$ ||
+                ! "$EXPECTED_CERT" =~ ^[0-9a-f]{64}$ ||
+                "$ACTUAL_CERT" != "$EXPECTED_CERT" ]]; then
+            echo "::error::APK certificate does not match configured keystore"
+            exit 1
+          fi
+
+          echo "PASS: APK signature and certificate"
+
+          if ! "$ZIPALIGN" -c -P 16 4 "$APK"; then
+            echo "::error::APK failed 16 KiB alignment verification"
+            exit 1
+          fi
+
+          echo "PASS: APK alignment 16 KiB"
+
       - name: Collect APK
         run: |
           mkdir -p dist
