@@ -31,22 +31,6 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
-      - name: Checkout morphe-patcher
-        uses: actions/checkout@v4
-        with:
-          repository: MorpheApp/morphe-patcher
-          ref: 812e96eaac173cd058ba49e242325371959befae
-          path: deps/morphe-patcher
-          persist-credentials: false
-
-      - name: Checkout morphe-library
-        uses: actions/checkout@v4
-        with:
-          repository: MorpheApp/morphe-library
-          ref: 29d78892c61e11102fe98b549a5503da488306f2
-          path: deps/morphe-library
-          persist-credentials: false
-
       - name: Test and build Dev APK
         env:
           _JAVA_OPTIONS: -Djava.awt.headless=true
