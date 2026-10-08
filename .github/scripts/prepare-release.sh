@@ -55,7 +55,7 @@ fi
 # are not accepted. Never concatenate fingerprints into a single digest.
 CERT_LINES=$("$APKSIGNER" verify --print-certs "$APK_SRC")
 CERTS=$(printf '%s\n' "$CERT_LINES" |
-  sed -nE 's/^(Signer #[0-9]+|V[0-9]+(\\.[0-9]+)? Signer): certificate SHA-256 digest: ([[:xdigit:]]{64})$/\\3/p' |
+  sed -nE 's/^(Signer #[0-9]+|V[0-9]+(\\.[0-9]+)? Signer:?) certificate SHA-256 digest: ([[:xdigit:]]{64})$/\\3/p' |
   tr '[:upper:]' '[:lower:]' | sort -u)
 ACTUAL_CERT="$CERTS"
 EXPECTED_CERT=$(keytool -exportcert -keystore app/keystore.jks \
