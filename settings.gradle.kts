@@ -57,10 +57,10 @@ include(":app")
 // Include morphe-patcher and morphe-library as composite builds if they exist locally
 mapOf(
     "morphe-patcher" to "app.morphe:morphe-patcher",
-//    "morphe-library" to "app.morphe:morphe-library", // FIXME: Must upgrade library gradle to use this
+    "morphe-library" to "app.morphe:morphe-library",
 //    "ARSCLib" to "com.github.REAndroid:arsclib"
 ).forEach { (libraryPath, libraryName) ->
-    val libDir = file("../$libraryPath")
+    val libDir = file("deps/$libraryPath")
     if (libDir.exists()) {
         includeBuild(libDir) {
             dependencySubstitution {
